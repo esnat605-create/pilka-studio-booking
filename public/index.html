@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pilka Studio — салон красоты · онлайн-запись</title>
+<meta name="description" content="Pilka Studio, Сухум, ул. Ардзинба. Маникюр, педикюр, наращивание, лазерная эпиляция, брови и ресницы. Выберите услугу, мастера и удобное время — запись занимает меньше минуты.">
+<meta name="theme-color" content="#faf5ef">
+<meta name="color-scheme" content="light">
+
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Pilka Studio — онлайн-запись">
+<meta property="og:description" content="Выберите услугу, мастера и удобное время. Запись занимает меньше минуты.">
+<meta property="og:locale" content="ru_RU">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+<a class="skip-link" href="#booking">Перейти к форме записи</a>
+
+<!-- ========================================================================
+     Шапка
+     ===================================================================== -->
+<header class="site-header" id="siteHeader">
+  <div class="wrap site-header__inner">
+    <a class="site-header__brand" href="#top" aria-label="Pilka Studio — на главную">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" width="34" height="34">
+          <circle cx="32" cy="32" r="32" fill="var(--blush)"/>
+          <text x="32" y="40" text-anchor="middle" font-family="var(--font-display)" font-weight="600" font-size="30" fill="var(--ink)">P</text>
+        </svg>
+      </span>
+      <span class="brand-word">Pilka<span class="brand-word__studio">Studio</span></span>
+    </a>
+
+    <nav class="site-nav" aria-label="Разделы страницы">
+      <a href="#services">Услуги</a>
+      <a href="#masters">Мастера</a>
+      <a href="#contacts">Контакты</a>
+    </nav>
+
+    <a class="btn btn--primary btn--sm site-header__cta" href="#booking">Записаться</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ======================================================================
+       Первый экран
+       =================================================================== -->
+  <section class="hero">
+    <div class="wrap hero__inner">
+      <div class="hero__logo" aria-hidden="true">
+        <svg viewBox="0 0 200 200" width="152" height="152">
+          <circle cx="100" cy="100" r="100" fill="var(--blush)"/>
+          <text x="100" y="92" text-anchor="middle" dominant-baseline="middle"
+                font-family="var(--font-display)" font-weight="600" font-size="72" fill="var(--ink)">P</text>
+          <text x="100" y="136" text-anchor="middle"
+                font-family="var(--font-display)" font-weight="500" font-size="25" letter-spacing="3" fill="var(--ink)">PILKA</text>
+          <text x="100" y="155" text-anchor="middle"
+                font-family="var(--font-ui)" font-size="10.5" letter-spacing="5" fill="var(--ink-2)">STUDIO</text>
+        </svg>
+      </div>
+
+      <p class="hero__eyebrow">Салон красоты · Сухум</p>
+      <h1 class="hero__title">Запишитесь<br>за одну минуту</h1>
+      <p class="hero__lead">
+        Маникюр, педикюр, наращивание, лазерная эпиляция, брови и ресницы.
+        Выберите услугу, мастера и удобное время — мы покажем только те часы,
+        которые действительно свободны.
+      </p>
+
+      <div class="hero__actions">
+        <a class="btn btn--primary" href="#booking">Выбрать время</a>
+        <a class="btn btn--ghost" href="#services">Посмотреть услуги</a>
+      </div>
+
+      <p class="hero__hours" id="heroHours" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <!-- ======================================================================
+       Услуги
+       =================================================================== -->
+  <section class="section" id="services" aria-labelledby="servicesTitle">
+    <div class="wrap">
+      <p class="section__eyebrow">Что мы делаем</p>
+      <h2 class="section__title" id="servicesTitle">Услуги</h2>
+
+      <div class="services" id="servicesList" aria-busy="true">
+        <!-- Скелетоны на время загрузки: место под карточки резервируется
+             заранее, поэтому страница не «прыгает», когда данные приходят. -->
+        <div class="skeleton skeleton--card"></div>
+        <div class="skeleton skeleton--card"></div>
+        <div class="skeleton skeleton--card"></div>
+      </div>
+
+      <p class="section__note" id="servicesNote" hidden></p>
+    </div>
+  </section>
+
+  <!-- ======================================================================
+       Мастера
+       =================================================================== -->
+  <section class="section section--tinted" id="masters" aria-labelledby="mastersTitle">
+    <div class="wrap">
+      <p class="section__eyebrow">Кто с вами работает</p>
+      <h2 class="section__title" id="mastersTitle">Мастера</h2>
+
+      <div class="masters" id="mastersList" aria-busy="true">
+        <div class="skeleton skeleton--row"></div>
+        <div class="skeleton skeleton--row"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================================
+       Форма записи
+       =================================================================== -->
+  <section class="section" id="booking" aria-labelledby="bookingTitle">
+    <div class="wrap wrap--narrow">
+      <p class="section__eyebrow">Онлайн-запись</p>
+      <h2 class="section__title" id="bookingTitle">Выберите время</h2>
+
+      <!-- Общая ошибка загрузки справочников -->
+      <div class="alert alert--error" id="loadError" role="alert" hidden>
+        <p id="loadErrorText"></p>
+        <button type="button" class="btn btn--ghost btn--sm" id="retryLoad">Попробовать снова</button>
+      </div>
+
+      <form class="form" id="bookingForm" novalidate autocomplete="on">
+
+        <!-- ---- Шаг 1: услуга ------------------------------------------ -->
+        <div class="step" data-step="1">
+          <div class="step__head">
+            <span class="step__num" aria-hidden="true">1</span>
+            <label class="step__label" for="fService">Услуга</label>
+          </div>
+          <div class="select-wrap">
+            <select id="fService" name="service" class="control" required
+                    aria-describedby="errService">
+              <option value="">Загружаем услуги…</option>
+            </select>
+          </div>
+          <p class="field-error" id="errService" role="alert"></p>
+        </div>
+
+        <!-- ---- Шаг 2: мастер ------------------------------------------ -->
+        <div class="step" data-step="2">
+          <div class="step__head">
+            <span class="step__num" aria-hidden="true">2</span>
+            <label class="step__label" for="fMaster">Мастер</label>
+          </div>
+          <div class="select-wrap">
+            <select id="fMaster" name="master" class="control" required disabled
+                    aria-describedby="hintMaster errMaster">
+              <option value="">Сначала выберите услугу</option>
+            </select>
+          </div>
+          <p class="field-hint" id="hintMaster">Показаны только мастера, которые оказывают выбранную услугу.</p>
+          <p class="field-error" id="errMaster" role="alert"></p>
+        </div>
+
+        <!-- ---- Шаг 3: дата -------------------------------------------- -->
+        <div class="step" data-step="3">
+          <div class="step__head">
+            <span class="step__num" aria-hidden="true">3</span>
+            <span class="step__label" id="dateLabel">Дата</span>
+          </div>
+
+          <div class="calendar" id="calendar" role="group" aria-labelledby="dateLabel">
+            <div class="calendar__bar">
+              <button type="button" class="calendar__nav" id="calPrev" aria-label="Предыдущий месяц">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+              </button>
+              <span class="calendar__month" id="calMonth" aria-live="polite"></span>
+              <button type="button" class="calendar__nav" id="calNext" aria-label="Следующий месяц">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+
+            <div class="calendar__dow" aria-hidden="true">
+              <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+            </div>
+
+            <div class="calendar__grid" id="calGrid"></div>
+          </div>
+          <p class="field-error" id="errDate" role="alert"></p>
+        </div>
+
+        <!-- ---- Шаг 4: время ------------------------------------------- -->
+        <div class="step" data-step="4">
+          <div class="step__head">
+            <span class="step__num" aria-hidden="true">4</span>
+            <span class="step__label" id="timeLabel">Время</span>
+          </div>
+
+          <div class="slots" id="slotsBox" role="group" aria-labelledby="timeLabel" aria-live="polite">
+            <p class="slots__placeholder">Выберите услугу, мастера и дату — покажем свободное время.</p>
+          </div>
+          <p class="field-error" id="errTime" role="alert"></p>
+        </div>
+
+        <!-- ---- Шаг 5: контакты ---------------------------------------- -->
+        <fieldset class="step step--fields" data-step="5">
+          <legend class="step__head step__head--legend">
+            <span class="step__num" aria-hidden="true">5</span>
+            <span class="step__label">Ваши контакты</span>
+          </legend>
+
+          <div class="field">
+            <label class="field__label" for="fName">Имя <span class="req" aria-hidden="true">*</span></label>
+            <input class="control" type="text" id="fName" name="name" required
+                   autocomplete="name" maxlength="80" placeholder="Как к вам обращаться"
+                   aria-describedby="errName">
+            <p class="field-error" id="errName" role="alert"></p>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="fPhone">Телефон <span class="req" aria-hidden="true">*</span></label>
+            <input class="control" type="tel" id="fPhone" name="phone" required
+                   autocomplete="tel" inputmode="tel" maxlength="30"
+                   placeholder="+7 940 000 00 00" aria-describedby="hintPhone errPhone">
+            <p class="field-hint" id="hintPhone">Нужен только для подтверждения записи.</p>
+            <p class="field-error" id="errPhone" role="alert"></p>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="fComment">Комментарий <span class="field__optional">— необязательно</span></label>
+            <textarea class="control" id="fComment" name="comment" rows="3" maxlength="500"
+                      placeholder="Пожелания к мастеру, особенности волос, кожи или ногтей"></textarea>
+          </div>
+
+          <!-- Ловушка для ботов: поле скрыто от людей и всегда должно остаться
+               пустым. Именно поэтому у него нет визуальной подписи, а от
+               скринридеров и автозаполнения оно закрыто отдельно. -->
+          <div class="hp" aria-hidden="true">
+            <label for="website">Не заполняйте это поле</label>
+            <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+          </div>
+
+          <div class="field field--check">
+            <input type="checkbox" id="fConsent" name="consent" required aria-describedby="errConsent">
+            <label for="fConsent">
+              Согласен(на) на обработку персональных данных и на звонок для подтверждения
+              записи<span class="req" aria-hidden="true">&nbsp;*</span>
+            </label>
+          </div>
+          <p class="field-error" id="errConsent" role="alert"></p>
+        </fieldset>
+
+        <!-- ---- Итог и отправка ---------------------------------------- -->
+        <div class="summary" id="summary" hidden>
+          <h3 class="summary__title">Проверьте запись</h3>
+          <dl class="summary__list">
+            <div><dt>Услуга</dt><dd id="sumService">—</dd></div>
+            <div><dt>Мастер</dt><dd id="sumMaster">—</dd></div>
+            <div><dt>Когда</dt><dd id="sumWhen">—</dd></div>
+            <div id="sumPriceRow" hidden><dt>Стоимость</dt><dd id="sumPrice">—</dd></div>
+          </dl>
+        </div>
+
+        <div class="alert alert--error" id="formError" role="alert" hidden></div>
+
+        <button type="submit" class="btn btn--primary btn--block" id="submitBtn">
+          <span class="btn__label">Записаться</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+
+        <p class="form__legal">
+          Нажимая «Записаться», вы отправляете заявку. Мы перезвоним, чтобы её подтвердить.<br>
+          Не нашли удобное время? Напишите нам в
+          <a href="https://wa.me/79407751166" target="_blank" rel="noopener">WhatsApp</a>.
+        </p>
+      </form>
+
+      <!-- ---- Экран успеха --------------------------------------------- -->
+      <div class="done" id="done" hidden tabindex="-1">
+        <div class="done__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false"><path d="M4 12.5l5.5 5.5L20 7"/></svg>
+        </div>
+        <h3 class="done__title">Вы записаны</h3>
+        <p class="done__text" id="doneText"></p>
+        <p class="done__note">
+          Администратор свяжется с вами для подтверждения. Если планы изменятся —
+          напишите нам в <a href="https://wa.me/79407751166" target="_blank" rel="noopener">WhatsApp</a>,
+          и мы перенесём запись.
+        </p>
+        <button type="button" class="btn btn--ghost" id="againBtn">Записаться ещё раз</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================================
+       Контакты
+       =================================================================== -->
+  <section class="section section--tinted" id="contacts" aria-labelledby="contactsTitle">
+    <div class="wrap wrap--narrow contacts">
+      <p class="section__eyebrow">Как нас найти</p>
+      <h2 class="section__title" id="contactsTitle">Контакты</h2>
+
+      <dl class="contacts__list">
+        <div>
+          <dt>WhatsApp</dt>
+          <dd><a href="https://wa.me/79407751166" target="_blank" rel="noopener">+7 940 775 11 66</a></dd>
+        </div>
+        <div>
+          <dt>Адрес</dt>
+          <dd>г. Сухум, ул. Ардзинба</dd>
+        </div>
+        <div>
+          <dt>Часы работы</dt>
+          <dd id="contactHours">—</dd>
+        </div>
+        <div>
+          <dt>Instagram</dt>
+          <dd><a href="https://www.instagram.com/pilka_studio_/" target="_blank" rel="noopener">@pilka_studio_</a></dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap site-footer__inner">
+    <span class="site-footer__brand">Pilka Studio</span>
+    <span class="site-footer__copy">Сухум, ул. Ардзинба · +7 940 775 11 66</span>
+  </div>
+</footer>
+
+<script src="/script.js" defer></script>
+</body>
+</html>

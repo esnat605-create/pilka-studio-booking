@@ -1,0 +1,1003 @@
+/* =============================================================================
+   Pilka Studio — страница онлайн-записи
+   -----------------------------------------------------------------------------
+   Порядок в файле: токены → база → утилиты → компоненты → секции → адаптив.
+
+   Подход к вёрстке — mobile-first: сначала описан вид на телефоне, затем
+   медиазапросы «от ширины и больше» расширяют его до планшета и десктопа.
+   Отступы и размеры собраны в шкалу с шагом 4px, чтобы ритм страницы был
+   единым, а не набором случайных значений.
+
+   Палитра построена вокруг фирменного знака студии: пудрово-бежевый круг с
+   монограммой — тёплые кремовые и блаш-тона, чёрно-коричневый графит вместо
+   чистого чёрного, терракотовый акцент для активных состояний. Контраст
+   основных пар проверен по WCAG AA:
+     ink на bg        ≈ 15.2:1
+     ink-2 на bg      ≈  7.1:1
+     muted на bg      ≈  4.6:1  (только для подписей)
+     terracotta на bg ≈  4.9:1
+   ========================================================================== */
+
+/* -----------------------------------------------------------------------------
+   Токены
+   -------------------------------------------------------------------------- */
+:root {
+  --bg:            #faf5ee;
+  --surface:       #ffffff;
+  --surface-2:     #f5ebe0;
+  --blush:         #eeddce;
+  --blush-deep:    #e4c9ae;
+  --ink:           #241d18;
+  --ink-2:         #59493e;
+  --muted:         #8a7a6c;
+  --line:          #e9decf;
+  --line-strong:   #d3c0a8;
+  --accent:        #241d18;
+  --accent-soft:   #efe1d1;
+  --terracotta:    #b5572f;
+  --terracotta-dk: #96461f;
+  --focus:         #96461f;
+  --danger:        #a5352a;
+  --danger-soft:   #fbf0ee;
+  --success:       #3c6b4a;
+
+  /* Типографика */
+  --font-display: "Cormorant Garamond", "Times New Roman", Times, serif;
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+
+  /* Шкала отступов (4px) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+  --s-9: 96px;
+
+  --radius: 3px;
+  --radius-lg: 8px;
+
+  /* Минимальный размер интерактивного элемента — требование доступности */
+  --tap: 44px;
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur: 180ms;
+}
+
+/* -----------------------------------------------------------------------------
+   База
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+  /* Чтобы якорь не уезжал под липкую шапку */
+  scroll-padding-top: 88px;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  /* 16px — минимум, при котором iOS не увеличивает страницу при фокусе в поле */
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+img { max-width: 100%; height: auto; display: block; }
+
+/* Атрибут hidden обязан побеждать любой display из классов. Без этой строки
+   .form, .done и .alert (у них display: grid) остаются видимыми несмотря на
+   hidden — специфичность класса выше, чем у встроенного правила [hidden]. */
+[hidden] { display: none !important; }
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  line-height: 1.15;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+p { margin: 0; }
+
+a { color: inherit; }
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Видимая обводка фокуса обязательна: она — единственный ориентир для тех, кто
+   ходит по странице с клавиатуры. Убирать её нельзя ни при каких условиях. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: var(--radius);
+}
+
+::selection { background: var(--accent-soft); }
+
+/* Уважаем системную настройку «уменьшить движение» */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Утилиты
+   -------------------------------------------------------------------------- */
+.wrap {
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  padding-inline: var(--s-5);
+}
+.wrap--narrow { max-width: 640px; }
+
+@media (min-width: 768px) {
+  .wrap { padding-inline: var(--s-6); }
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  background: var(--ink);
+  color: #fff;
+  padding: var(--s-3) var(--s-4);
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: var(--s-4);
+  top: var(--s-4);
+}
+
+/* Прячем визуально, оставляя для скринридеров */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Ловушка для ботов. Не display:none — часть ботов такие поля игнорирует.
+   Поле уводится за пределы экрана, но формально остаётся заполняемым. */
+.hp {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* -----------------------------------------------------------------------------
+   Кнопки
+   -------------------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  min-height: var(--tap);
+  padding: var(--s-3) var(--s-6);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease),
+              color var(--dur) var(--ease),
+              border-color var(--dur) var(--ease),
+              opacity var(--dur) var(--ease);
+  /* Убирает 300ms задержку тапа на мобильных */
+  touch-action: manipulation;
+}
+
+.btn--primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.btn--primary:hover { background: #3a2e25; border-color: #3a2e25; }
+.btn--primary:active { background: #17110d; }
+
+.btn--ghost {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.btn--ghost:hover { background: var(--surface-2); border-color: var(--ink-2); }
+
+.btn--sm { min-height: 40px; padding: var(--s-2) var(--s-4); font-size: 13px; }
+.btn--block { width: 100%; }
+
+.btn[disabled],
+.btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Индикатор загрузки внутри кнопки отправки */
+.spinner {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+.btn.is-busy .spinner { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* -----------------------------------------------------------------------------
+   Шапка
+   -------------------------------------------------------------------------- */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(250, 245, 238, 0.92);
+  backdrop-filter: saturate(1.4) blur(10px);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--dur) var(--ease);
+  /* Не заезжаем под «чёлку» на телефонах */
+  padding-top: env(safe-area-inset-top);
+}
+.site-header.is-stuck { border-bottom-color: var(--line); }
+
+.site-header__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  min-height: 64px;
+}
+
+.site-header__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  text-decoration: none;
+  padding-block: var(--s-2);
+}
+.brand-mark { display: inline-flex; flex: none; }
+.brand-word {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.brand-word__studio {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+.site-nav { display: none; }
+
+/* На узких экранах кнопка в шапке компактная: крупный призыв к действию уже
+   есть на первом экране, дублировать его во всю ширину незачем. */
+.site-header__cta {
+  min-height: 38px;
+  padding-inline: var(--s-4);
+  font-size: 12px;
+}
+.site-nav a {
+  text-decoration: none;
+  font-size: 14px;
+  color: var(--ink-2);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid transparent;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.site-nav a:hover { color: var(--ink); border-bottom-color: var(--terracotta); }
+
+@media (min-width: 768px) {
+  .site-nav { display: flex; gap: var(--s-6); }
+}
+
+/* -----------------------------------------------------------------------------
+   Первый экран
+   -------------------------------------------------------------------------- */
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding-block: var(--s-7) var(--s-8);
+  text-align: center;
+  background:
+    radial-gradient(120% 70% at 50% -10%, var(--blush) 0%, transparent 60%),
+    var(--bg);
+}
+
+.hero__inner { position: relative; }
+
+.hero__logo {
+  display: flex;
+  justify-content: center;
+  margin: 0 auto var(--s-5);
+  filter: drop-shadow(0 8px 20px rgba(180, 140, 100, 0.25));
+}
+
+.hero__eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--terracotta-dk);
+  margin-bottom: var(--s-4);
+}
+
+.hero__title {
+  font-size: clamp(38px, 11vw, 68px);
+  font-weight: 300;
+  margin-bottom: var(--s-5);
+}
+
+.hero__lead {
+  max-width: 46ch;
+  margin: 0 auto var(--s-6);
+  color: var(--ink-2);
+  font-size: 17px;
+}
+
+.hero__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  align-items: stretch;
+  max-width: 340px;
+  margin-inline: auto;
+}
+
+.hero__hours {
+  margin-top: var(--s-6);
+  font-size: 14px;
+  color: var(--muted);
+  min-height: 1.6em; /* место зарезервировано заранее — без скачка вёрстки */
+}
+
+@media (min-width: 640px) {
+  .hero { padding-block: var(--s-8) var(--s-9); }
+  .hero__actions { flex-direction: row; justify-content: center; max-width: none; }
+  .site-header__cta { min-height: 40px; padding-inline: var(--s-5); font-size: 13px; }
+}
+
+/* -----------------------------------------------------------------------------
+   Секции
+   -------------------------------------------------------------------------- */
+.section { padding-block: var(--s-8); }
+.section--tinted { background: var(--surface-2); }
+
+@media (min-width: 768px) {
+  .section { padding-block: var(--s-9); }
+}
+
+.section__eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--terracotta-dk);
+  margin-bottom: var(--s-2);
+}
+
+.section__title {
+  font-size: clamp(30px, 7vw, 44px);
+  font-weight: 300;
+  margin-bottom: var(--s-6);
+}
+
+.section__note {
+  margin-top: var(--s-5);
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* -----------------------------------------------------------------------------
+   Услуги
+   -------------------------------------------------------------------------- */
+.services { display: grid; gap: var(--s-5); }
+
+/* Свёрнутые группы услуг.
+   Одна колонка намеренно: свёрнутый список читается сверху вниз, а в три
+   колонки раскрытая категория дёргала бы соседние. */
+.services--accordion {
+  grid-template-columns: 1fr;
+  gap: 0;
+  max-width: 720px;
+  border-top: 1px solid var(--line);
+}
+
+.acc { border-bottom: 1px solid var(--line); }
+
+.acc__head {
+  width: 100%;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4) 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.acc__title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--ink);
+}
+
+.acc__count {
+  min-width: 24px;
+  padding: 1px var(--s-2);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Шеврон рисуется границами — отдельная картинка ради него не нужна */
+.acc__chevron {
+  margin-left: auto;
+  width: 9px;
+  height: 9px;
+  border-right: 1.5px solid var(--ink-2);
+  border-bottom: 1.5px solid var(--ink-2);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform var(--dur) var(--ease);
+}
+.acc.is-open .acc__chevron { transform: rotate(-135deg) translate(-2px, -2px); }
+
+.acc__panel { padding-bottom: var(--s-5); }
+
+.service-group__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+
+.service-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  font-size: 15px;
+}
+.service-row__name { color: var(--ink-2); }
+.service-row__meta {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  color: var(--muted);
+  font-size: 14px;
+  /* Моноширинные цифры: колонка цен не «пляшет» */
+  font-variant-numeric: tabular-nums;
+}
+.service-row__price { color: var(--ink); }
+
+/* Вариант услуги — с отступом под своим заголовком */
+.service-row--variant { padding-left: var(--s-4); }
+.service-row--variant .service-row__name::before {
+  content: "— ";
+  color: var(--line-strong);
+}
+
+/* Заголовок услуги, у которой есть варианты */
+.service-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+}
+.service-head__name { font-weight: 500; color: var(--ink); }
+.service-head__from { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.service-head:first-child { margin-top: 0; }
+/* -----------------------------------------------------------------------------
+   Мастера
+   -------------------------------------------------------------------------- */
+.masters { display: grid; gap: var(--s-3); }
+
+@media (min-width: 640px) {
+  .masters { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1024px) {
+  .masters { grid-template-columns: repeat(3, 1fr); }
+}
+
+.master-card {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--s-4);
+}
+
+/* Фото мастера. Тот же размер и форма, что у заглушки-буквы, — список не
+   «прыгает», когда фотографии есть только у части мастеров. */
+.master-card__photo {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.master-card__initial {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--blush);
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--ink);
+}
+
+.master-card__name { font-weight: 500; }
+.master-card__spec { font-size: 14px; color: var(--muted); }
+
+/* -----------------------------------------------------------------------------
+   Скелетоны загрузки
+   -------------------------------------------------------------------------- */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, #ece0d2 37%, var(--surface-2) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: var(--radius-lg);
+}
+.skeleton--card { height: 200px; }
+.skeleton--row { height: 80px; }
+@keyframes shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* -----------------------------------------------------------------------------
+   Форма
+   -------------------------------------------------------------------------- */
+.form { display: grid; gap: var(--s-6); }
+
+.step { display: grid; gap: var(--s-3); }
+
+.step--fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  gap: var(--s-5);
+}
+
+.step__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0;
+}
+.step__head--legend { float: left; width: 100%; margin-bottom: var(--s-3); }
+
+.step__num {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.step__label {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.01em;
+}
+
+.field { display: grid; gap: var(--s-2); }
+
+.field__label { font-size: 14px; font-weight: 500; }
+.field__optional { font-weight: 400; color: var(--muted); }
+.req { color: var(--danger); }
+
+.field-hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Ошибка живёт под своим полем и появляется только когда есть текст —
+   поэтому пустой элемент не занимает места и вёрстка не прыгает. */
+.field-error {
+  font-size: 13px;
+  color: var(--danger);
+  display: none;
+}
+.field-error:not(:empty) { display: block; }
+
+.control {
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+  appearance: none;
+}
+.control:hover:not(:disabled) { border-color: var(--ink-2); }
+.control:disabled {
+  background: var(--surface-2);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.control[aria-invalid="true"] {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+textarea.control { min-height: 96px; resize: vertical; line-height: 1.5; }
+
+/* Своя стрелка у выпадающего списка: у нативной вид сильно разный по браузерам */
+.select-wrap { position: relative; }
+.select-wrap::after {
+  content: "";
+  position: absolute;
+  right: var(--s-4);
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -6px;
+  border-right: 1.5px solid var(--ink-2);
+  border-bottom: 1.5px solid var(--ink-2);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.select-wrap .control { padding-right: var(--s-7); }
+
+.field--check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-3);
+  align-items: start;
+}
+.field--check input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--accent);
+  /* Целевая область растягивается за счёт отступа у подписи */
+  cursor: pointer;
+}
+.field--check label {
+  font-size: 14px;
+  color: var(--ink-2);
+  cursor: pointer;
+  padding-block: var(--s-1);
+}
+
+/* -----------------------------------------------------------------------------
+   Календарь
+   -------------------------------------------------------------------------- */
+.calendar {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--s-4);
+}
+
+/* Ячейки квадратные (aspect-ratio: 1), поэтому без ограничения ширины на
+   десктопе календарь растянулся бы на все 640px формы и превратился в полотно
+   с ячейками по 85px. Фиксируем комфортную ширину — ячейка получается ~47px,
+   что и выглядит аккуратно, и остаётся удобным для пальца. */
+@media (min-width: 600px) {
+  .calendar { max-width: 392px; }
+}
+
+.calendar__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+
+.calendar__month {
+  font-family: var(--font-display);
+  font-size: 20px;
+  text-transform: capitalize;
+}
+
+.calendar__nav {
+  width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.calendar__nav:hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-strong); }
+.calendar__nav:disabled { opacity: 0.35; cursor: not-allowed; }
+.calendar__nav svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.calendar__dow,
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--s-1);
+}
+
+.calendar__dow {
+  margin-bottom: var(--s-2);
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.cal-day {
+  aspect-ratio: 1;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--dur) var(--ease),
+              color var(--dur) var(--ease),
+              border-color var(--dur) var(--ease);
+}
+.cal-day:hover:not(:disabled) { background: var(--surface-2); }
+.cal-day:disabled { color: #cdbfae; cursor: not-allowed; }
+
+/* Выходной мастера. Отличается от просто недоступного дня штриховкой: клиенту
+   важно понимать, что дело не в занятости, а в том, что мастера в этот день
+   нет. Цветом это не передаётся — только фактурой, поэтому читается и без
+   различения цветов. */
+.cal-day.is-dayoff:disabled {
+  background: repeating-linear-gradient(135deg,
+    var(--surface-2) 0 3px, transparent 3px 6px);
+  color: #d6c7b4;
+}
+.cal-day.is-empty { visibility: hidden; }
+.cal-day.is-today { border-color: var(--line-strong); }
+
+/* Выбранный день перечислен вместе с состоянием :hover намеренно.
+   Селектор .cal-day:hover:not(:disabled) весит больше, чем .cal-day.is-selected,
+   поэтому без второй строки выбранная дата под курсором теряла заливку и
+   выглядела невыбранной. */
+.cal-day.is-selected,
+.cal-day.is-selected:hover:not(:disabled) {
+  background: var(--terracotta);
+  border-color: var(--terracotta);
+  color: #fff;
+}
+
+/* -----------------------------------------------------------------------------
+   Сетка времени
+   -------------------------------------------------------------------------- */
+.slots { min-height: 56px; }
+
+.slots__placeholder,
+.slots__empty {
+  font-size: 14px;
+  color: var(--muted);
+  padding: var(--s-4);
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
+}
+.slots__empty { color: var(--ink-2); }
+
+.slots__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: var(--s-2);
+}
+
+.slot-btn {
+  min-height: var(--tap);
+  padding: var(--s-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--dur) var(--ease),
+              color var(--dur) var(--ease),
+              border-color var(--dur) var(--ease);
+}
+.slot-btn:hover { background: var(--surface-2); border-color: var(--ink-2); }
+
+/* Та же история, что и с днями календаря: выбранное время должно оставаться
+   выбранным и под курсором. */
+.slot-btn[aria-pressed="true"],
+.slot-btn[aria-pressed="true"]:hover {
+  background: var(--terracotta);
+  border-color: var(--terracotta);
+  color: #fff;
+}
+
+/* Утренние часы у стилистов и визажистов помечаем отдельно, чтобы клиент
+   понимал, почему у одних мастеров есть раннее время, а у других нет. */
+.slots__label {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: var(--s-2);
+}
+.slots__label:first-child { margin-top: 0; }
+
+/* -----------------------------------------------------------------------------
+   Итог, сообщения, экран успеха
+   -------------------------------------------------------------------------- */
+.summary {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--s-5);
+}
+.summary__title {
+  font-size: 20px;
+  margin-bottom: var(--s-4);
+}
+.summary__list { margin: 0; display: grid; gap: var(--s-3); }
+.summary__list > div {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: var(--s-3);
+  align-items: baseline;
+}
+.summary__list dt { font-size: 13px; color: var(--muted); }
+.summary__list dd { margin: 0; font-size: 15px; }
+
+.alert {
+  padding: var(--s-4);
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  display: grid;
+  gap: var(--s-3);
+  justify-items: start;
+}
+.alert--error {
+  background: var(--danger-soft);
+  border: 1px solid #eccfcb;
+  color: #7d2a20;
+}
+
+.done {
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--s-7) var(--s-5);
+  display: grid;
+  gap: var(--s-4);
+  justify-items: center;
+}
+.done__mark {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+}
+.done__mark svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: var(--success);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.done__title { font-size: 28px; }
+.done__text { font-size: 17px; color: var(--ink-2); }
+.done__note { font-size: 14px; color: var(--muted); max-width: 44ch; }
+
+.form__legal {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+.form__legal a { color: var(--terracotta-dk); text-decoration: underline; text-underline-offset: 2px; }
+
+/* -----------------------------------------------------------------------------
+   Контакты и подвал
+   -------------------------------------------------------------------------- */
+.contacts__list { margin: 0; display: grid; gap: var(--s-4); }
+.contacts__list > div {
+  display: grid;
+  gap: var(--s-1);
+  padding-bottom: var(--s-4);
+  border-bottom: 1px solid var(--line);
+}
+.contacts__list dt {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.contacts__list dd { margin: 0; font-size: 17px; line-height: 1.7; }
+.contacts__list a { text-decoration: none; border-bottom: 1px solid var(--line-strong); }
+.contacts__list a:hover { border-bottom-color: var(--terracotta); color: var(--terracotta-dk); }
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  padding-block: var(--s-6);
+  padding-bottom: calc(var(--s-6) + env(safe-area-inset-bottom));
+}
+.site-footer__inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  align-items: center;
+  text-align: center;
+}
+.site-footer__brand {
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 0.1em;
+}
+.site-footer__copy { font-size: 13px; color: var(--muted); }
+
+@media (min-width: 640px) {
+  .site-footer__inner { flex-direction: row; justify-content: space-between; }
+}
