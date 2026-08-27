@@ -1001,3 +1001,109 @@ textarea.control { min-height: 96px; resize: vertical; line-height: 1.5; }
 @media (min-width: 640px) {
   .site-footer__inner { flex-direction: row; justify-content: space-between; }
 }
+
+/* -----------------------------------------------------------------------------
+   Личный кабинет
+   -------------------------------------------------------------------------- */
+.cab__lead {
+  max-width: 52ch;
+  margin-bottom: var(--s-6);
+  color: var(--ink-2);
+}
+
+.cab__h2 {
+  font-size: 24px;
+  font-weight: 400;
+  margin: var(--s-7) 0 var(--s-4);
+}
+
+.cab-steps { display: grid; gap: var(--s-4); }
+
+.cab-howto {
+  margin: 0;
+  padding-left: var(--s-5);
+  display: grid;
+  gap: var(--s-2);
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+.cab-waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  justify-content: center;
+  font-size: 14px;
+  color: var(--muted);
+  min-height: 24px;
+}
+.spinner--inline { display: inline-block !important; width: 13px; height: 13px; }
+
+/* ---- сводка ---- */
+.cab-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+.cab-stat {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--s-4);
+}
+.cab-stat__value {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.cab-stat__label { font-size: 13px; color: var(--muted); margin-top: var(--s-1); }
+
+/* ---- посещение ---- */
+.cab-visit {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s-1) var(--s-4);
+  padding: var(--s-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+.cab-visit--off { opacity: 0.55; }
+
+.cab-visit__when {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  font-size: 13px;
+  color: var(--muted);
+}
+.cab-visit__date::first-letter { text-transform: uppercase; }
+.cab-visit__time { font-variant-numeric: tabular-nums; }
+
+.cab-visit__service { font-size: 16px; }
+.cab-visit__master { font-size: 14px; color: var(--muted); }
+
+.cab-visit__side {
+  display: grid;
+  justify-items: end;
+  gap: var(--s-1);
+  text-align: right;
+}
+.cab-visit__price { font-variant-numeric: tabular-nums; }
+.cab-visit__status { font-size: 13px; color: var(--muted); }
+
+.cab-year {
+  margin: var(--s-6) 0 var(--s-2);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+.cab-year:first-child { margin-top: 0; }
+
+.cab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin-top: var(--s-7);
+}

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Личный кабинет — Pilka Studio</title>
+<meta name="description" content="История посещений Pilka Studio и ваши предстоящие записи.">
+<meta name="theme-color" content="#faf5ef">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex">
+
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+<a class="skip-link" href="#cabMain">Перейти к содержимому</a>
+
+<header class="site-header" id="siteHeader">
+  <div class="wrap site-header__inner">
+    <a class="site-header__brand" href="/" aria-label="Pilka Studio — на главную">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" width="34" height="34">
+          <circle cx="32" cy="32" r="32" fill="var(--blush)"/>
+          <text x="26.6" y="34" text-anchor="middle" font-family="var(--font-display)" font-weight="400" font-size="30" fill="var(--ink)">P</text>
+          <text x="36.5" y="41" text-anchor="middle" font-family="var(--font-display)" font-weight="400" font-size="20.5" fill="var(--ink)">S</text>
+        </svg>
+      </span>
+      <span class="brand-word">Pilka<span class="brand-word__studio">Studio</span></span>
+    </a>
+
+    <nav class="site-nav" aria-label="Разделы">
+      <a href="/#services">Услуги</a>
+      <a href="/#masters">Мастера</a>
+      <a href="/#contacts">Контакты</a>
+    </nav>
+
+    <a class="btn btn--primary btn--sm site-header__cta" href="/#booking">Записаться</a>
+  </div>
+</header>
+
+<main id="cabMain" class="section">
+  <div class="wrap wrap--narrow">
+
+    <!-- ================= пока грузим ================= -->
+    <div id="cabLoading">
+      <div class="skeleton skeleton--row" style="margin-bottom:12px;"></div>
+      <div class="skeleton skeleton--row"></div>
+    </div>
+
+    <!-- ================= не вошёл ================= -->
+    <section id="cabLogin" hidden>
+      <p class="section__eyebrow">Личный кабинет</p>
+      <h1 class="section__title">Ваши записи и история</h1>
+
+      <p class="cab__lead">
+        Войдите, чтобы видеть предстоящие записи и всю историю посещений Pilka Studio.
+        Номер подтверждается через Telegram — вводить его вручную не нужно,
+        и никто посторонний не сможет открыть ваш кабинет.
+      </p>
+
+      <div class="alert alert--error" id="cabError" role="alert" hidden></div>
+
+      <!-- шаг 1 -->
+      <div class="cab-steps" id="cabStep1">
+        <button type="button" class="btn btn--primary btn--block" id="cabStartBtn">
+          <span class="btn__label">Войти через Telegram</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+        <p class="form__legal">
+          Нет Telegram? Напишите нам в
+          <a href="https://wa.me/79407751166" target="_blank" rel="noopener">WhatsApp</a>.
+        </p>
+      </div>
+
+      <!-- шаг 2 -->
+      <div class="cab-steps" id="cabStep2" hidden>
+        <ol class="cab-howto">
+          <li>Откройте бота салона — кнопка ниже.</li>
+          <li>Нажмите в боте <b>«Поделиться номером»</b>.</li>
+          <li>Вернитесь на эту страницу — кабинет откроется сам.</li>
+        </ol>
+
+        <a class="btn btn--primary btn--block" id="cabTgLink" href="#" target="_blank" rel="noopener">
+          Открыть бота в Telegram
+        </a>
+
+        <p class="cab-waiting" id="cabWaiting" aria-live="polite">
+          <span class="spinner spinner--inline" aria-hidden="true"></span>
+          Ждём подтверждения…
+        </p>
+
+        <button type="button" class="btn btn--ghost btn--block" id="cabRestartBtn">Начать заново</button>
+      </div>
+    </section>
+
+    <!-- ================= вошёл ================= -->
+    <section id="cabHome" hidden>
+      <p class="section__eyebrow">Личный кабинет</p>
+      <h1 class="section__title" id="cabHello">Здравствуйте!</h1>
+
+      <div class="cab-stats" id="cabStats"></div>
+
+      <h2 class="cab__h2">Предстоящие записи</h2>
+      <div id="cabUpcoming"></div>
+
+      <h2 class="cab__h2">История посещений</h2>
+      <div id="cabPast"></div>
+
+      <div class="cab-actions">
+        <a class="btn btn--primary" href="/#booking">Записаться ещё раз</a>
+        <button type="button" class="btn btn--ghost" id="cabLogoutBtn">Выйти</button>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap site-footer__inner">
+    <span class="site-footer__brand">Pilka Studio</span>
+    <span class="site-footer__copy">Сухум, ул. Ардзинба 148 · +7 940 775 11 66</span>
+  </div>
+</footer>
+
+<script src="/cabinet.js" defer></script>
+</body>
+</html>
