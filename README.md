@@ -74,20 +74,106 @@ DATABASE_URL=postgresql://... node dev_server.js
 ```
 public/            — статический фронтенд (раздаётся как есть)
   index.html
+  cabinet.html       личный кабинет клиента
+  cabinet.js
   style.css
   script.js
   assets/
 netlify/functions/  — серверные функции
-  catalog.js         GET  /api/catalog — услуги, мастера, часы работы
-  slots.js           GET  /api/slots  — свободное время у мастера на дату
-  book.js            POST /api/book   — создание записи
+  catalog.js         GET  /api/catalog  — услуги, мастера, часы работы
+  slots.js           GET  /api/slots   — свободное время у мастера на дату
+  book.js            POST /api/book    — создание записи
+  cabinet.js         POST /api/cabinet — вход и данные личного кабинета
+  tg-webhook.js      POST /api/tg-webhook — сообщения от Telegram-бота
   lib/core.js         общая логика: база, время, антиспам, расчёт слотов
+  lib/telegram.js     работа с Telegram Bot API
 netlify.toml        — редиректы /api/* → функции, заголовки безопасности
 ```
 
 ---
 
-## 5. Антиспам и защита от накладок
+## 5. Личный кабинет клиента (вход через Telegram)
+
+Клиент видит свои предстоящие записи и историю посещений на странице `/cabinet`.
+Номер подтверждает Telegram, а не сайт — поэтому открыть чужой кабинет,
+зная чужой телефон, невозможно.
+
+### Как это работает
+
+```
+Клиент жмёт «Войти»
+      │
+      ▼
+сайт выдаёт одноразовый код и ссылку t.me/pilka_studio_bot?start=КОД
+      │
+      ▼
+в боте клиент жмёт «Поделиться номером»  ← номер даёт Telegram, не клиент
+      │
+      ▼
+бот присылает номер на /api/tg-webhook, код помечается подтверждённым
+      │
+      ▼
+страница видит подтверждение и открывает кабинет
+```
+
+Код живёт 15 минут и срабатывает один раз. Сессия кабинета — 60 дней.
+
+### Настройка (один раз)
+
+**Шаг 1. Переменные окружения в Netlify.**
+
+| Переменная | Значение | Secret |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | токен от @BotFather | да |
+| `TELEGRAM_WEBHOOK_SECRET` | любая длинная случайная строка | да |
+| `TELEGRAM_BOT_USERNAME` | `pilka_studio_bot` (без «@») | нет |
+
+Токен — это пароль от бота: кто им владеет, тот управляет ботом. Вставляйте его
+только в поле Netlify, не пересылайте в переписке.
+
+**Шаг 2. Деплой.** Deploys → Trigger deploy → Deploy site.
+
+**Шаг 3. Подключить вебхук.** Один раз выполните в консоли браузера,
+открыв сайт (F12 → Console), подставив значение `TELEGRAM_WEBHOOK_SECRET`:
+
+```js
+fetch('/api/cabinet', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ action: 'setup', key: 'ВАШ_TELEGRAM_WEBHOOK_SECRET' })
+}).then(r => r.json()).then(console.log)
+```
+
+В ответе должно быть `"ok": true` и адрес вебхука. Токен здесь не участвует —
+функция берёт его из переменных окружения сама.
+
+**Шаг 4. Проверка.** Откройте `/cabinet`, нажмите «Войти через Telegram»,
+в боте нажмите «Поделиться номером». Кабинет должен открыться сам.
+
+### Если бот молчит
+
+Первым делом — диагностика. Она не трогает базу и отвечает даже когда что-то
+сломано; секреты не раскрывает, показывает только «задано / не задано».
+
+```js
+fetch('/api/cabinet', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ action: 'diag', key: 'ВАШ_TELEGRAM_WEBHOOK_SECRET' })
+}).then(r => r.json()).then(d => console.log(JSON.stringify(d, null, 2)))
+```
+
+| Что видно | Что это значит |
+|---|---|
+| `"TELEGRAM_BOT_TOKEN": false` | переменная не задана или не сделан деплой после её добавления |
+| `getMe` с ошибкой `401 Unauthorized` | токен неверный |
+| `webhookInfo.url` пустой | вебхук не подключён — выполните шаг 3 |
+| `webhookInfo.url` не совпадает с `expectedWebhook` | вебхук смотрит не туда — выполните шаг 3 заново |
+| `last_error_message` в `webhookInfo` | Telegram стучался, но получил ошибку; текст скажет какую |
+
+---
+
+## 6. Антиспам и защита от накладок
 
 | Ситуация | Поведение |
 |---|---|

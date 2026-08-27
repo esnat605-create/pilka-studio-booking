@@ -37,6 +37,22 @@
   to = "/.netlify/functions/book"
   status = 200
 
+[[redirects]]
+  from = "/api/cabinet"
+  to = "/.netlify/functions/cabinet"
+  status = 200
+
+[[redirects]]
+  from = "/api/tg-webhook"
+  to = "/.netlify/functions/tg-webhook"
+  status = 200
+
+# Красивый адрес кабинета вместо /cabinet.html
+[[redirects]]
+  from = "/cabinet"
+  to = "/cabinet.html"
+  status = 200
+
 # -----------------------------------------------------------------------------
 #  Заголовки безопасности
 # -----------------------------------------------------------------------------

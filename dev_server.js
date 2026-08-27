@@ -20,6 +20,7 @@ const ROUTES = {
   '/api/catalog': './netlify/functions/catalog.js',
   '/api/slots': './netlify/functions/slots.js',
   '/api/book': './netlify/functions/book.js',
+  '/api/cabinet': './netlify/functions/cabinet.js',
 };
 
 const MIME = {
@@ -80,6 +81,7 @@ const server = http.createServer(async (req, res) => {
 
   // ---- Статика ---------------------------------------------------------------
   let rel = url.pathname === '/' ? '/index.html' : url.pathname;
+  if (rel === '/cabinet') rel = '/cabinet.html';
   // Простейшая защита от выхода за пределы public/
   const filePath = path.join(PUBLIC_DIR, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
   if (!filePath.startsWith(PUBLIC_DIR)) {
