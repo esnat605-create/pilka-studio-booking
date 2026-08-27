@@ -1,0 +1,16 @@
+{
+  "name": "pilka-studio-booking",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pilka Studio — публичная страница онлайн-записи клиентов (Netlify Functions + Supabase Postgres)",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "netlify dev",
+    "check": "node --check netlify/functions/lib/core.js && node --check netlify/functions/catalog.js && node --check netlify/functions/slots.js && node --check netlify/functions/book.js"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  }
+}

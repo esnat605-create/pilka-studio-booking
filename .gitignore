@@ -1,0 +1,17 @@
+# Зависимости
+node_modules/
+
+# Локальные секреты — в репозиторий не попадают никогда
+.env
+.env.local
+.env.*.local
+
+# Служебное от Netlify CLI
+.netlify/
+
+# Мусор ОС и редакторов
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/

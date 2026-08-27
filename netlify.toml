@@ -1,0 +1,66 @@
+# =============================================================================
+#  Конфигурация Netlify для страницы онлайн-записи Pilka Studio
+# =============================================================================
+#  Сборки как таковой нет: фронтенд — обычные html/css/js без сборщика, поэтому
+#  Netlify просто раздаёт папку public как есть. Единственное, что собирается, —
+#  серверные функции (их Netlify упаковывает сам).
+# =============================================================================
+
+[build]
+  # Что публикуется как сайт.
+  publish = "public"
+  # Где лежат серверные функции.
+  functions = "netlify/functions"
+  # Шага сборки нет — но зависимости из package.json Netlify всё равно поставит.
+  command = "echo 'Сборка не требуется — статические файлы отдаются как есть'"
+
+[functions]
+  node_bundler = "esbuild"
+
+# -----------------------------------------------------------------------------
+#  Короткие адреса для API
+# -----------------------------------------------------------------------------
+#  Фронтенд обращается к /api/catalog, /api/slots, /api/book — так адреса не
+#  зависят от того, что внутри это функции Netlify.
+[[redirects]]
+  from = "/api/catalog"
+  to = "/.netlify/functions/catalog"
+  status = 200
+
+[[redirects]]
+  from = "/api/slots"
+  to = "/.netlify/functions/slots"
+  status = 200
+
+[[redirects]]
+  from = "/api/book"
+  to = "/.netlify/functions/book"
+  status = 200
+
+# -----------------------------------------------------------------------------
+#  Заголовки безопасности
+# -----------------------------------------------------------------------------
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=(), interest-cohort=()"
+    # Страница подключает только собственные файлы и шрифты Google.
+    # 'unsafe-inline' для стилей нужен из-за небольших inline-стилей в разметке.
+    Content-Security-Policy = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'self'; base-uri 'self'"
+
+# Картинки и шрифты можно кэшировать надолго — они меняются только вместе с
+# именем файла при обновлении сайта.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# А вот саму страницу и скрипты кэшировать надолго нельзя: иначе клиенты будут
+# видеть старую версию формы после обновления.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
