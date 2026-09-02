@@ -1,8 +1,11 @@
 // =============================================================================
-//  GET /api/slots?masterId=...&serviceId=...&date=YYYY-MM-DD
+//  GET /api/slots?masterId=...&serviceIds=...&date=YYYY-MM-DD
 // =============================================================================
 //  Возвращает список свободных стартов времени у конкретного мастера на
-//  конкретную дату под конкретную услугу.
+//  конкретную дату под выбранные услуги. Услуг может быть несколько — тогда
+//  окно ищется под их суммарную длительность: клиент делает их подряд за один
+//  визит. Прежний параметр serviceId (одна услуга) тоже понимается — страница,
+//  оставшаяся в кэше браузера после обновления, продолжает работать.
 //
 //  Занятость берётся из боевой таблицы appointments (только чтение). Отменённые
 //  записи и неявки время не занимают — так же, как в админке. Ответ содержит
@@ -15,7 +18,6 @@ const {
   computeFreeSlots,
   daysBetween,
   fail,
-  isBookable,
   isValidDateStr,
   loadBusyIntervals,
   loadDaysOff,
@@ -23,7 +25,8 @@ const {
   loadMasterServices,
   loadServices,
   loadSettings,
-  masterDoesService,
+  parseServiceIds,
+  resolveSelection,
   salonNow,
   withDb,
 } = require('./lib/core.js');
@@ -31,11 +34,11 @@ const {
 exports.handler = withDb(async function (event, client) {
   const q = event.queryStringParameters || {};
   const masterId = String(q.masterId || '').trim();
-  const serviceId = String(q.serviceId || '').trim();
+  const serviceIds = parseServiceIds(q.serviceIds, q.serviceId);
   const date = String(q.date || '').trim();
 
   if (!masterId) fail('Не выбран мастер', 400, 'bad_request', 'masterId');
-  if (!serviceId) fail('Не выбрана услуга', 400, 'bad_request', 'serviceId');
+  if (!serviceIds.length) fail('Не выбрана услуга', 400, 'bad_request', 'serviceId');
   if (!isValidDateStr(date)) fail('Некорректная дата', 400, 'bad_request', 'date');
 
   const now = salonNow();
@@ -55,18 +58,9 @@ exports.handler = withDb(async function (event, client) {
   const master = masters.find((m) => m.id === masterId);
   if (!master) fail('Мастер не найден или сейчас не принимает', 404, 'master_not_found', 'masterId');
 
-  const service = services.find((s) => s.id === serviceId);
-  if (!service) fail('Услуга не найдена', 404, 'service_not_found', 'serviceId');
-
-  // Услуга-заголовок (у неё есть варианты) сама не бронируется: цена и
-  // длительность записи должны быть однозначны.
-  if (!isBookable(service, services)) {
-    fail('Выберите конкретный вариант этой услуги', 400, 'service_is_group', 'serviceId');
-  }
-
-  if (!masterDoesService(masterServices, masterId, serviceId)) {
-    fail('Этот мастер не оказывает выбранную услугу', 400, 'service_not_offered', 'serviceId');
-  }
+  // Длительность визита — сумма по выбранным услугам. Считаем её здесь, а не
+  // берём из запроса: иначе можно было бы «сжать» визит и влезть в чужое окно.
+  const selection = resolveSelection(serviceIds, services, masterServices, masterId);
 
   const [busy, daysOff] = await Promise.all([
     loadBusyIntervals(client, masterId, date),
@@ -75,7 +69,7 @@ exports.handler = withDb(async function (event, client) {
   const slots = computeFreeSlots({
     settings,
     master,
-    durationMin: service.duration,
+    durationMin: selection.duration,
     date,
     busy,
     daysOff,
@@ -84,8 +78,8 @@ exports.handler = withDb(async function (event, client) {
   return {
     date,
     masterId,
-    serviceId,
-    duration: service.duration,
+    serviceIds,
+    duration: selection.duration,
     slots,
     // Отдельный признак, чтобы страница показала «мастер не работает в этот
     // день», а не безликое «свободного времени нет».
