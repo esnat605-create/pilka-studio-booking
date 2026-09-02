@@ -435,7 +435,10 @@ button, input, select, textarea {
   border-top: 1px solid var(--line);
 }
 
-.acc { border-bottom: 1px solid var(--line); }
+/* min-width: 0 — защита от растягивания: .acc лежит в гриде, а грид-элементы по
+   умолчанию не сжимаются уже своего содержимого. Любая длинная строка без
+   переносов внутри иначе раздвинет колонку за край экрана. */
+.acc { border-bottom: 1px solid var(--line); min-width: 0; }
 
 .acc__head {
   width: 100%;
@@ -496,6 +499,11 @@ button, input, select, textarea {
   justify-content: space-between;
   gap: var(--s-4);
   font-size: 15px;
+  /* Строка услуги — элемент грида (.service-group__list). Без min-width: 0 она
+     не может стать уже своего содержимого, и описание в одну строку без
+     переносов растягивало весь список услуг за край экрана: страница начинала
+     ездить вбок на телефоне. */
+  min-width: 0;
 }
 .service-row__name { color: var(--ink-2); }
 .service-row__meta {
@@ -528,6 +536,137 @@ button, input, select, textarea {
 .service-head__name { font-weight: 500; color: var(--ink); }
 .service-head__from { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .service-head:first-child { margin-top: 0; }
+
+/* -----------------------------------------------------------------------------
+   Услуга с пояснением
+   -----------------------------------------------------------------------------
+   Услуги, у которых цена зависит от работы, показываются вилкой «2 000 – 2 500 ₽»
+   и коротким пояснением. Пояснение по умолчанию свёрнуто в одну строку: иначе
+   список из сотни позиций превращается в стену текста. Дешёвые допы описания не
+   имеют и остаются в прежнем компактном виде — им карточка ни к чему.
+   -------------------------------------------------------------------------- */
+.service-row--rich {
+  display: block;
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.service-row--rich:last-child { border-bottom: 0; }
+.service-row--rich .service-row__name {
+  display: block;
+  font-size: 17px;
+  color: var(--ink);
+}
+.service-row__desc {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+/* Свёрнутое состояние — ровно одна строка с многоточием. Усекается только сам
+   текст: кнопка «ещё» лежит рядом и потому никогда не обрезается вместе с ним. */
+.service-row__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.service-row__desc.is-open { align-items: flex-end; }
+.service-row__desc.is-open .service-row__text { white-space: normal; overflow: visible; }
+.service-row__more {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.service-row__more:hover { color: var(--ink); }
+.service-row__more:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 3px; }
+.service-row__price--big {
+  display: block;
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* -----------------------------------------------------------------------------
+   Шаг 1 формы: выбор нескольких услуг
+   -----------------------------------------------------------------------------
+   Позиций больше сотни, поэтому список прокручивается и над ним есть поиск.
+   Выбранное закреплено сверху: при поиске отмеченная услуга иначе уезжала бы
+   из виду, и казалось бы, что выбор слетел.
+   -------------------------------------------------------------------------- */
+.step__hint {
+  margin: 0 0 var(--s-2);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.svc-pick {
+  margin-top: var(--s-2);
+  max-height: 320px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.svc-pick__group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 8px 12px 6px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.svc-pick__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* Не меньше 44 px по высоте — палец должен попадать без прицеливания. */
+  min-height: 44px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+.svc-pick__row:last-child { border-bottom: 0; }
+.svc-pick__row input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+.svc-pick__name { flex: 1; min-width: 0; font-size: 15px; color: var(--ink-2); }
+.svc-pick__meta {
+  flex: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.svc-pick__empty { margin: 0; padding: 14px 12px; color: var(--muted); font-size: 14px; }
+.svc-pick__total {
+  margin: var(--s-2) 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
 /* -----------------------------------------------------------------------------
    Мастера
    -------------------------------------------------------------------------- */
