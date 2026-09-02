@@ -360,10 +360,18 @@ async function loadMasters(client) {
   }));
 }
 
+// Услуги для сайта. Скрытые (hidden) не отдаются вообще: администратор
+// пометил их как устаревшие, и на публичной странице им делать нечего — при
+// этом в истории записей и в отчётах они остаются целыми.
 async function loadServices(client) {
   const res = await client.query(
-    `SELECT id, name, category, duration, price, coalesce(parent_id, '') AS "parentId"
-       FROM services ORDER BY category, name`
+    `SELECT id, name, category, duration, price,
+            coalesce(parent_id, '')   AS "parentId",
+            price_max                 AS "priceMax",
+            coalesce(description, '') AS description
+       FROM services
+      WHERE coalesce(hidden, false) = false
+      ORDER BY category, name`
   );
   return res.rows.map((s) => ({
     id: s.id,
@@ -372,6 +380,10 @@ async function loadServices(client) {
     duration: Math.max(5, parseInt(s.duration, 10) || DEFAULT_SETTINGS.stepMinutes),
     price: Number(s.price) || 0,
     parentId: s.parentId || '',
+    // Верхняя граница «вилки». null означает фиксированную цену — сайт покажет
+    // одно число, а не «0 ₽».
+    priceMax: s.priceMax === null ? null : Number(s.priceMax),
+    description: s.description || '',
   }));
 }
 
@@ -381,6 +393,61 @@ async function loadServices(client) {
 function isBookable(service, allServices) {
   if (service.parentId) return true;
   return !allServices.some((x) => x.parentId === service.id);
+}
+
+// За один визит клиент может взять несколько услуг подряд — особенно в
+// эпиляции, где зон под три десятка. Больше десяти за визит не бывает; предел
+// нужен, чтобы подделанный запрос не заставил сервер собирать визит на весь
+// рабочий день.
+const MAX_SERVICES_PER_BOOKING = 10;
+
+// Разбирает список услуг из запроса. Принимает и новый параметр serviceIds
+// (несколько через запятую или массивом), и прежний одиночный serviceId —
+// страница, закэшированная браузером до обновления, продолжит работать.
+function parseServiceIds(raw, legacy) {
+  let list = [];
+  if (Array.isArray(raw)) list = raw;
+  else if (typeof raw === 'string' && raw.trim()) list = raw.split(',');
+  else if (legacy) list = [legacy];
+
+  const out = [];
+  list.forEach((x) => {
+    const id = clean(x, 32);
+    if (id && out.indexOf(id) === -1) out.push(id);
+  });
+  return out;
+}
+
+// Проверяет выбранные услуги и считает итог визита. Все проверки — на сервере:
+// цену и длительность, пришедшие из браузера, мы не используем нигде, иначе
+// подделанный запрос назначил бы себе любую цену.
+function resolveSelection(serviceIds, services, masterServices, masterId) {
+  if (!serviceIds.length) fail('Выберите услугу', 400, 'bad_request', 'serviceId');
+  if (serviceIds.length > MAX_SERVICES_PER_BOOKING) {
+    fail(`За один визит можно выбрать не больше ${MAX_SERVICES_PER_BOOKING} услуг`, 400, 'too_many_services', 'serviceId');
+  }
+
+  const chosen = [];
+  serviceIds.forEach((id) => {
+    const s = services.find((x) => x.id === id);
+    if (!s) fail('Услуга не найдена', 404, 'service_not_found', 'serviceId');
+    // Услуга-заголовок сама не бронируется: цена и длительность визита должны
+    // быть однозначны.
+    if (!isBookable(s, services)) {
+      fail(`«${s.name}» — это группа услуг, выберите конкретный вариант`, 400, 'service_is_group', 'serviceId');
+    }
+    if (!masterDoesService(masterServices, masterId, id)) {
+      fail(`Этот мастер не оказывает услугу «${s.name}»`, 400, 'service_not_offered', 'serviceId');
+    }
+    chosen.push(s);
+  });
+
+  return {
+    services: chosen,
+    duration: chosen.reduce((sum, s) => sum + s.duration, 0),
+    price: chosen.reduce((sum, s) => sum + s.price, 0),
+    names: chosen.map((s) => s.name),
+  };
 }
 
 // Порядок категорий на сайте задаётся в настройках строкой через «|».
@@ -550,6 +617,9 @@ module.exports = {
   hashIp,
   isEarlyEligible,
   isBookable,
+  parseServiceIds,
+  resolveSelection,
+  MAX_SERVICES_PER_BOOKING,
   categoryOrderIndex,
   isValidDateStr,
   isValidTimeStr,
