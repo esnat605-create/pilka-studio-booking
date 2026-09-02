@@ -145,14 +145,14 @@
         <div class="step" data-step="1">
           <div class="step__head">
             <span class="step__num" aria-hidden="true">1</span>
-            <label class="step__label" for="fService">Услуга</label>
+            <label class="step__label" for="fServiceSearch">Услуги</label>
           </div>
-          <div class="select-wrap">
-            <select id="fService" name="service" class="control" required
-                    aria-describedby="errService">
-              <option value="">Загружаем услуги…</option>
-            </select>
-          </div>
+          <p class="step__hint">Можно отметить несколько — если делаете их за один визит, цена и время сложатся.</p>
+          <input type="search" id="fServiceSearch" class="control" autocomplete="off"
+                 placeholder="Найти услугу — например, «бикини»">
+          <div id="fServiceList" class="svc-pick" role="group" aria-label="Список услуг"
+               aria-describedby="errService"></div>
+          <p class="svc-pick__total" id="fServiceTotal" hidden></p>
           <p class="field-error" id="errService" role="alert"></p>
         </div>
 
@@ -168,7 +168,7 @@
               <option value="">Сначала выберите услугу</option>
             </select>
           </div>
-          <p class="field-hint" id="hintMaster">Показаны только мастера, которые оказывают выбранную услугу.</p>
+          <p class="field-hint" id="hintMaster">Показаны только мастера, которые делают всё выбранное.</p>
           <p class="field-error" id="errMaster" role="alert"></p>
         </div>
 
