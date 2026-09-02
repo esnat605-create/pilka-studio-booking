@@ -79,11 +79,23 @@ async function currentPhone(event, client) {
 // наружу не отдаются — клиенту они не предназначены.
 async function loadVisits(client, phone) {
   const key = phoneKey(phone);
+  // Визит может состоять из нескольких услуг подряд — тогда собираем их
+  // названия в порядке оказания. У записей, сделанных до появления такой
+  // возможности, состава нет, и мы берём единственную услугу самой записи:
+  // иначе в кабинете у старых визитов пропала бы услуга.
   const res = await client.query(
     `SELECT a.date, a.time, a.duration, a.status, a.price,
             coalesce(s.name, '')  AS "serviceName",
             coalesce(ps.name, '') AS "parentName",
-            coalesce(m.name, '')  AS "masterName"
+            coalesce(m.name, '')  AS "masterName",
+            (SELECT string_agg(
+                      CASE WHEN cp.name IS NOT NULL AND cp.name <> ''
+                           THEN cp.name || ' — ' || cs.name ELSE cs.name END,
+                      ' + ' ORDER BY aps.position)
+               FROM appointment_services aps
+               JOIN services cs  ON cs.id = aps.service_id
+               LEFT JOIN services cp ON cp.id = nullif(cs.parent_id, '')
+              WHERE aps.appointment_id = a.id) AS "servicesLabel"
        FROM appointments a
        LEFT JOIN services s  ON s.id = a.service_id
        LEFT JOIN services ps ON ps.id = s.parent_id
@@ -105,7 +117,8 @@ async function loadVisits(client, phone) {
       duration: Number(r.duration) || 0,
       status: r.status || '',
       price: Number(r.price) || 0,
-      serviceName: r.parentName ? r.parentName + ' — ' + r.serviceName : r.serviceName,
+      serviceName: r.servicesLabel
+        || (r.parentName ? r.parentName + ' — ' + r.serviceName : r.serviceName),
       masterName: r.masterName,
     };
     if (r.date >= today) upcoming.push(item);
