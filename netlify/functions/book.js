@@ -35,7 +35,7 @@ const {
   computeFreeSlots,
   daysBetween,
   fail,
-  isBookable,
+  parseServiceIds,
   hashIp,
   isValidDateStr,
   isValidTimeStr,
@@ -45,7 +45,7 @@ const {
   loadMasterServices,
   loadServices,
   loadSettings,
-  masterDoesService,
+  resolveSelection,
   normalizePhone,
   phoneKey,
   salonNow,
@@ -97,7 +97,9 @@ exports.handler = withDb(
     // ---------------------------------------------------------------------
 
     const masterId = clean(body.masterId, 32);
-    const serviceId = clean(body.serviceId, 32);
+    // За один визит клиент может выбрать несколько услуг подряд. Старое поле
+    // serviceId тоже понимается: страница из кэша браузера продолжит работать.
+    const serviceIds = parseServiceIds(body.serviceIds, body.serviceId);
     const date = clean(body.date, 10);
     const time = clean(body.time, 5);
     const clientName = clean(body.name, 80);
@@ -120,7 +122,7 @@ exports.handler = withDb(
     const phone = phoneCheck.phone;
 
     if (!masterId) fail('Выберите мастера', 400, 'bad_request', 'masterId');
-    if (!serviceId) fail('Выберите услугу', 400, 'bad_request', 'serviceId');
+    if (!serviceIds.length) fail('Выберите услугу', 400, 'bad_request', 'serviceId');
     if (!isValidDateStr(date)) fail('Выберите дату записи', 400, 'bad_date', 'date');
     if (!isValidTimeStr(time)) fail('Выберите время записи', 400, 'bad_time', 'time');
 
@@ -145,23 +147,17 @@ exports.handler = withDb(
     const master = masters.find((m) => m.id === masterId);
     if (!master) fail('Мастер не найден или сейчас не принимает', 404, 'master_not_found', 'masterId');
 
-    const service = services.find((s) => s.id === serviceId);
-    if (!service) fail('Услуга не найдена', 404, 'service_not_found', 'serviceId');
-
-    // Услуга-заголовок (у неё есть варианты) сама не бронируется: цена и
-    // длительность записи должны быть однозначны.
-    if (!isBookable(service, services)) {
-      fail('Выберите конкретный вариант этой услуги', 400, 'service_is_group', 'serviceId');
-    }
-
-    if (!masterDoesService(masterServices, masterId, serviceId)) {
-      fail('Этот мастер не оказывает выбранную услугу', 400, 'service_not_offered', 'serviceId');
-    }
-
     // Длительность и цену берём из справочника, а не из запроса, — клиент не
-    // должен иметь возможности повлиять ни на то, ни на другое.
-    const duration = service.duration;
-    const price = service.price;
+    // должен иметь возможности повлиять ни на то, ни на другое. Для визита из
+    // нескольких услуг это суммы.
+    const selection = resolveSelection(serviceIds, services, masterServices, masterId);
+    const duration = selection.duration;
+    const price = selection.price;
+    // В самой записи service_id — ПЕРВАЯ услуга: так раскраска сетки в админке
+    // и прежние отчёты продолжают работать. Полный состав уходит в
+    // appointment_services ниже.
+    const serviceId = selection.services[0].id;
+    const serviceLabel = selection.names.join(' + ');
 
     const ipHash = hashIp(event);
     const userAgent = clean(event.headers && (event.headers['user-agent'] || event.headers['User-Agent']), 240);
@@ -295,6 +291,18 @@ exports.handler = withDb(
         ]
       );
 
+      // -- Состав визита ------------------------------------------------------
+      // Цену и длительность каждой услуги фиксируем на момент записи: если салон
+      // потом поменяет прайс, уже сделанная заявка не должна подорожать.
+      for (let i = 0; i < selection.services.length; i++) {
+        const s = selection.services[i];
+        await client.query(
+          `INSERT INTO appointment_services (appointment_id, service_id, position, price, duration)
+           VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+          [apptId, s.id, i, s.price, s.duration]
+        );
+      }
+
       // -- Журнал заявок с сайта ---------------------------------------------
       await client.query(
         `INSERT INTO web_bookings
@@ -328,7 +336,7 @@ exports.handler = withDb(
           time,
           duration,
           masterName: master.name,
-          serviceName: service.name,
+          serviceName: serviceLabel,
           price,
           clientName,
           phone,
