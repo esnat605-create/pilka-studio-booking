@@ -24,7 +24,10 @@
 
   var state = {
     catalog: null,        // ответ /api/catalog
-    serviceId: '',
+    // За один визит клиент может выбрать несколько услуг подряд — особенно в
+    // эпиляции, где зон несколько десятков. Порядок в массиве и есть порядок
+    // оказания.
+    serviceIds: [],
     masterId: '',
     date: '',             // 'YYYY-MM-DD'
     time: '',             // 'HH:MM'
@@ -123,7 +126,7 @@
   function clearAllErrors() {
     ['errService', 'errMaster', 'errDate', 'errTime', 'errName', 'errPhone', 'errConsent']
       .forEach(function (id) { var n = $(id); if (n) n.textContent = ''; });
-    ['fService', 'fMaster', 'fName', 'fPhone'].forEach(function (id) {
+    ['fMaster', 'fName', 'fPhone'].forEach(function (id) {
       var n = $(id); if (n) n.removeAttribute('aria-invalid');
     });
     var fe = $('formError');
@@ -187,7 +190,7 @@
         renderHours(data.salon);
         renderServices(data);
         renderMasters(data);
-        fillServiceSelect(data);
+        renderServicePicker();
         renderCalendar();
       })
       .catch(function (err) {
@@ -196,7 +199,8 @@
         $('loadErrorText').textContent =
           err.message || 'Не удалось загрузить список услуг. Проверьте связь и попробуйте снова.';
         $('loadError').hidden = false;
-        $('fService').innerHTML = '<option value="">Не удалось загрузить</option>';
+        $('fServiceList').innerHTML = '';
+        $('fServiceList').appendChild(el('p', 'svc-pick__empty', 'Не удалось загрузить список услуг.'));
       });
   }
 
@@ -268,9 +272,26 @@
     return rows;
   }
 
-  function priceFrom(variants) {
-    if (!variants.length) return 0;
-    return Math.min.apply(null, variants.map(function (v) { return Number(v.price) || 0; }));
+  // Цена для показа. У обычной услуги это одно число либо вилка «от — до»,
+  // если салон заполнил верхнюю границу: точная сумма зависит от длины волос,
+  // объёма зоны и материалов, и честнее показать диапазон, чем одно число,
+  // которое на кассе окажется другим.
+  function priceLabel(s) {
+    var lo = Number(s.price) || 0;
+    var hi = (s.priceMax === null || s.priceMax === undefined || s.priceMax === '')
+      ? null : Number(s.priceMax);
+    if (hi !== null && hi > lo) return formatPrice(lo) + ' – ' + formatPrice(hi);
+    return formatPrice(lo);
+  }
+
+  // У группы вилка считается по её вариантам: заполнять её руками означало бы
+  // держать в двух местах одно и то же и однажды разойтись с прайсом.
+  function variantsPriceLabel(variants) {
+    if (!variants.length) return '';
+    var prices = variants.map(function (v) { return Number(v.price) || 0; });
+    var lo = Math.min.apply(null, prices);
+    var hi = Math.max.apply(null, prices);
+    return lo === hi ? formatPrice(lo) : formatPrice(lo) + ' – ' + formatPrice(hi);
   }
 
   // Блок «Услуги»: свёрнутые по умолчанию группы. Раскрываются нажатием,
@@ -327,8 +348,8 @@
         if (row.heading) {
           var head2 = el('li', 'service-head');
           head2.appendChild(el('span', 'service-head__name', s.name));
-          var from = priceFrom(row.variants);
-          if (from) head2.appendChild(el('span', 'service-head__from', 'от ' + formatPrice(from)));
+          var range = variantsPriceLabel(row.variants);
+          if (range) head2.appendChild(el('span', 'service-head__from', range));
           list.appendChild(head2);
 
           row.variants.forEach(function (v) {
@@ -359,15 +380,45 @@
   }
 
   function serviceRow(s, isVariant) {
-    var li = el('li', 'service-row' + (isVariant ? ' service-row--variant' : ''));
-    li.appendChild(el('span', 'service-row__name', s.name));
+    var price = priceLabel(s);
+    var desc = (s.description || '').trim();
 
-    var meta = el('span', 'service-row__meta');
-    var price = formatPrice(s.price);
-    meta.appendChild(el('span', 'service-row__dur', formatDuration(s.duration)));
-    if (price) meta.appendChild(el('span', 'service-row__price', price));
-    li.appendChild(meta);
-    return li;
+    // Без описания оставляем прежний компактный вид в одну строку: дешёвым
+    // допам вроде «Снятие» развёрнутая карточка ни к чему, она только
+    // растягивает список на пустом месте.
+    if (!desc) {
+      var li = el('li', 'service-row' + (isVariant ? ' service-row--variant' : ''));
+      li.appendChild(el('span', 'service-row__name', s.name));
+      var meta = el('span', 'service-row__meta');
+      meta.appendChild(el('span', 'service-row__dur', formatDuration(s.duration)));
+      if (price) meta.appendChild(el('span', 'service-row__price', price));
+      li.appendChild(meta);
+      return li;
+    }
+
+    var card = el('li', 'service-row service-row--rich' + (isVariant ? ' service-row--variant' : ''));
+    card.appendChild(el('span', 'service-row__name', s.name));
+
+    // Кнопка «ещё» лежит РЯДОМ с текстом, а не внутри него: внутри усекаемого
+    // абзаца она обрезалась бы вместе с текстом, и нажать её было бы нечем.
+    var line = el('p', 'service-row__desc');
+    var text = el('span', 'service-row__text', formatDuration(s.duration) + ' · ' + desc);
+    line.appendChild(text);
+
+    var more = el('button', 'service-row__more', 'ещё');
+    more.type = 'button';
+    more.setAttribute('aria-expanded', 'false');
+    more.addEventListener('click', function () {
+      var open = more.getAttribute('aria-expanded') === 'true';
+      more.setAttribute('aria-expanded', open ? 'false' : 'true');
+      more.textContent = open ? 'ещё' : 'свернуть';
+      line.classList.toggle('is-open', !open);
+    });
+    line.appendChild(more);
+    card.appendChild(line);
+
+    if (price) card.appendChild(el('span', 'service-row__price service-row__price--big', price));
+    return card;
   }
 
   function renderMasters(data) {
@@ -418,36 +469,103 @@
      Выпадающие списки услуги и мастера
      ------------------------------------------------------------------------ */
 
-  function fillServiceSelect(data) {
-    var sel = $('fService');
-    sel.innerHTML = '';
-    sel.appendChild(new Option('Выберите услугу', ''));
+  // Полное имя услуги для списков и итога: вариант без родителя непонятен —
+  // «в один тон» само по себе ничего не значит.
+  function serviceFullName(s) {
+    if (!s) return '';
+    var parent = s.parentId && state.catalog
+      ? state.catalog.services.find(function (x) { return x.id === s.parentId; })
+      : null;
+    return parent ? parent.name + ' — ' + s.name : s.name;
+  }
 
-    var bookable = data.services.filter(function (s) { return isBookable(s, data.services); });
+  function selectedServices() {
+    if (!state.catalog) return [];
+    return state.serviceIds
+      .map(function (id) {
+        return state.catalog.services.find(function (s) { return s.id === id; });
+      })
+      .filter(Boolean);
+  }
 
-    if (!bookable.length) {
-      sel.appendChild(new Option('Услуги ещё не добавлены', '', false, false));
-      sel.disabled = true;
+  function selectionTotals() {
+    var list = selectedServices();
+    return {
+      count: list.length,
+      price: list.reduce(function (n, s) { return n + (Number(s.price) || 0); }, 0),
+      duration: list.reduce(function (n, s) { return n + (Number(s.duration) || 0); }, 0)
+    };
+  }
+
+  function serviceMatchesQuery(s, q) {
+    if (!q) return true;
+    return (serviceFullName(s) + ' ' + (s.category || '')).toLowerCase().indexOf(q) !== -1;
+  }
+
+  // Шаг 1: список услуг с галочками. Список длинный (у салона больше сотни
+  // позиций), поэтому он прокручивается, сверху есть поиск, а всё отмеченное
+  // закреплено вверху — иначе при поиске выбранная услуга уезжала бы из виду
+  // и казалось, что выбор слетел.
+  function renderServicePicker() {
+    var box = $('fServiceList');
+    if (!box) return;
+    var data = state.catalog;
+    box.innerHTML = '';
+
+    if (!data) {
+      box.appendChild(el('p', 'svc-pick__empty', 'Загружаем услуги…'));
       return;
     }
 
-    var byId = {};
-    data.services.forEach(function (s) { byId[s.id] = s; });
+    var bookable = data.services.filter(function (s) { return isBookable(s, data.services); });
+    if (!bookable.length) {
+      box.appendChild(el('p', 'svc-pick__empty', 'Услуги ещё не добавлены.'));
+      return;
+    }
 
-    groupServices(bookable).forEach(function (group) {
-      var og = document.createElement('optgroup');
-      og.label = group.title;
-      group.items.forEach(function (s) {
-        // Вариант показываем вместе с родителем: «Окрашивание волос — в один тон»,
-        // иначе три строки «в один тон / сложное / корни» невозможно различить.
-        var parent = s.parentId ? byId[s.parentId] : null;
-        var label = parent ? parent.name + ' — ' + s.name : s.name;
-        var price = formatPrice(s.price);
-        if (price) label += ' · ' + price;
-        og.appendChild(new Option(label, s.id));
-      });
-      sel.appendChild(og);
+    var q = ($('fServiceSearch').value || '').trim().toLowerCase();
+    var chosen = selectedServices();
+    var chosenIds = state.serviceIds;
+    var rest = bookable.filter(function (s) {
+      return chosenIds.indexOf(s.id) === -1 && serviceMatchesQuery(s, q);
     });
+
+    function row(s, checked) {
+      var label = el('label', 'svc-pick__row');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = s.id;
+      cb.checked = checked;
+      cb.addEventListener('change', function () { toggleService(s.id, cb.checked); });
+      label.appendChild(cb);
+      label.appendChild(el('span', 'svc-pick__name', serviceFullName(s)));
+      var meta = el('span', 'svc-pick__meta',
+        formatDuration(s.duration) + (formatPrice(s.price) ? ' · ' + formatPrice(s.price) : ''));
+      label.appendChild(meta);
+      return label;
+    }
+
+    if (chosen.length) {
+      box.appendChild(el('p', 'svc-pick__group', 'Выбрано'));
+      chosen.forEach(function (s) { box.appendChild(row(s, true)); });
+    }
+
+    if (rest.length) {
+      groupServices(rest).forEach(function (group) {
+        box.appendChild(el('p', 'svc-pick__group', group.title));
+        group.items.forEach(function (s) { box.appendChild(row(s, false)); });
+      });
+    } else if (!chosen.length) {
+      box.appendChild(el('p', 'svc-pick__empty',
+        q ? 'Ничего не нашлось — попробуйте другое слово.' : 'Услуги ещё не добавлены.'));
+    }
+
+    var totals = selectionTotals();
+    var total = $('fServiceTotal');
+    total.hidden = totals.count === 0;
+    if (totals.count) {
+      total.textContent = 'Итого: ' + formatPrice(totals.price) + ' · ' + formatDuration(totals.duration);
+    }
   }
 
   // Мастер делает услугу, если она есть в его списке. Пустой список означает
@@ -464,13 +582,16 @@
     return daysOffForMaster(masterId).indexOf(dateStr) !== -1;
   }
 
-  function mastersForService(serviceId) {
-    if (!state.catalog) return [];
+  // Мастер подходит, только если делает ВСЁ выбранное: визит идёт подряд у
+  // одного мастера, и предложить того, кто половину не оказывает, значило бы
+  // отправить клиента в заведомо неисполнимую запись.
+  function mastersForSelection() {
+    if (!state.catalog || !state.serviceIds.length) return [];
     var map = state.catalog.masterServices || {};
     return state.catalog.masters.filter(function (m) {
       var own = map[m.id];
-      if (!own || !own.length) return true;
-      return own.indexOf(serviceId) !== -1;
+      if (!own || !own.length) return true;   // список не настроен — делает всё
+      return state.serviceIds.every(function (id) { return own.indexOf(id) !== -1; });
     });
   }
 
@@ -478,15 +599,18 @@
     var sel = $('fMaster');
     sel.innerHTML = '';
 
-    if (!state.serviceId) {
-      sel.appendChild(new Option('Сначала выберите услугу', ''));
+    if (!state.serviceIds.length) {
+      sel.appendChild(new Option('Сначала выберите услуги', ''));
       sel.disabled = true;
       return;
     }
 
-    var list = mastersForService(state.serviceId);
+    var list = mastersForSelection();
     if (!list.length) {
-      sel.appendChild(new Option('Нет свободных мастеров для этой услуги', ''));
+      sel.appendChild(new Option(
+        state.serviceIds.length > 1
+          ? 'Нет мастера, который делает всё выбранное — уберите часть услуг'
+          : 'Нет свободных мастеров для этой услуги', ''));
       sel.disabled = true;
       return;
     }
@@ -594,7 +718,7 @@
   }
 
   function loadSlots() {
-    if (!state.serviceId || !state.masterId || !state.date) {
+    if (!state.serviceIds.length || !state.masterId || !state.date) {
       state.slots = [];
       renderSlotsMessage('slots__placeholder',
         'Выберите услугу, мастера и дату — покажем свободное время.');
@@ -608,7 +732,7 @@
 
     return apiGet('/api/slots', {
       masterId: state.masterId,
-      serviceId: state.serviceId,
+      serviceIds: state.serviceIds.join(','),
       date: state.date
     })
       .then(function (data) {
@@ -671,10 +795,16 @@
      Изменение выбора. Каждая функция сбрасывает то, что от неё зависит.
      ------------------------------------------------------------------------ */
 
-  function setService(id) {
-    state.serviceId = id;
+  function toggleService(id, on) {
+    var i = state.serviceIds.indexOf(id);
+    if (on && i === -1) state.serviceIds.push(id);
+    if (!on && i !== -1) state.serviceIds.splice(i, 1);
+
+    // Время всегда сбрасываем: длительность визита изменилась, и прежний слот
+    // мог перестать помещаться.
     state.time = '';
-    setError('errService', '', 'fService');
+    setError('errService', '');
+    renderServicePicker();
     fillMasterSelect();
     loadSlots();
     updateSummary();
@@ -719,8 +849,8 @@
      ------------------------------------------------------------------------ */
 
   function currentService() {
-    if (!state.catalog) return null;
-    return state.catalog.services.find(function (s) { return s.id === state.serviceId; }) || null;
+    var list = selectedServices();
+    return list.length ? list[0] : null;
   }
 
   function currentMaster() {
@@ -730,7 +860,8 @@
 
   function updateSummary() {
     var box = $('summary');
-    var service = currentService();
+    var chosen = selectedServices();
+    var service = chosen.length ? chosen[0] : null;
     var master = currentMaster();
 
     // Показываем итог только когда выбрано всё до времени включительно —
@@ -740,17 +871,15 @@
       return;
     }
 
-    // Для варианта показываем и родителя: «Окрашивание волос — в один тон»,
-    // иначе в итоге стоит просто «в один тон» и непонятно, чего именно.
-    var parent = service.parentId && state.catalog
-      ? state.catalog.services.find(function (x) { return x.id === service.parentId; })
-      : null;
-    var serviceLabel = parent ? parent.name + ' — ' + service.name : service.name;
-    $('sumService').textContent = serviceLabel + ' · ' + formatDuration(service.duration);
+    // Перечисляем все услуги визита и показываем общую длительность: клиент
+    // должен понимать, что бронирует полтора часа, а не двадцать минут.
+    var totals = selectionTotals();
+    $('sumService').textContent =
+      chosen.map(serviceFullName).join(' + ') + ' · ' + formatDuration(totals.duration);
     $('sumMaster').textContent = master.spec ? master.name + ' — ' + master.spec : master.name;
     $('sumWhen').textContent = formatDateHuman(state.date) + ', ' + state.time;
 
-    var price = formatPrice(service.price);
+    var price = formatPrice(totals.price);
     $('sumPriceRow').hidden = !price;
     if (price) $('sumPrice').textContent = price;
 
@@ -789,7 +918,7 @@
       }
     }
 
-    mark(!state.serviceId, 'errService', 'Выберите услугу', 'fService');
+    mark(!state.serviceIds.length, 'errService', 'Выберите хотя бы одну услугу', '');
     mark(!state.masterId, 'errMaster', 'Выберите мастера', 'fMaster');
     mark(!state.date, 'errDate', 'Выберите дату', '');
     mark(!state.time, 'errTime', 'Выберите время', '');
@@ -845,7 +974,7 @@
     setBusy(true);
 
     apiPost('/api/book', {
-      serviceId: state.serviceId,
+      serviceIds: state.serviceIds,
       masterId: state.masterId,
       date: state.date,
       time: state.time,
@@ -880,7 +1009,7 @@
           phone: ['errPhone', 'fPhone'],
           consent: ['errConsent', 'fConsent'],
           masterId: ['errMaster', 'fMaster'],
-          serviceId: ['errService', 'fService'],
+          serviceId: ['errService', ''],
           date: ['errDate', ''],
           time: ['errTime', '']
         };
@@ -919,7 +1048,7 @@
   }
 
   function resetForm() {
-    state.serviceId = '';
+    state.serviceIds = [];
     state.masterId = '';
     state.date = '';
     state.time = '';
@@ -928,6 +1057,7 @@
 
     $('bookingForm').reset();
     clearAllErrors();
+    renderServicePicker();
     fillMasterSelect();
     renderCalendar();
     loadSlots();
@@ -943,7 +1073,7 @@
      ------------------------------------------------------------------------ */
 
   function bindEvents() {
-    $('fService').addEventListener('change', function () { setService(this.value); });
+    $('fServiceSearch').addEventListener('input', renderServicePicker);
     $('fMaster').addEventListener('change', function () { setMaster(this.value); });
 
     $('calPrev').addEventListener('click', function () { shiftMonth(-1); });
