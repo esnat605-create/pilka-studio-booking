@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "netlify dev",
-    "check": "node --check netlify/functions/lib/core.js && node --check netlify/functions/catalog.js && node --check netlify/functions/slots.js && node --check netlify/functions/book.js"
+    "check": "node --check netlify/functions/lib/core.js && node --check netlify/functions/catalog.js && node --check netlify/functions/slots.js && node --check netlify/functions/book.js && node --check netlify/functions/send-reminders.js"
   },
   "dependencies": {
     "pg": "^8.11.3"
