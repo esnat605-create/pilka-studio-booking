@@ -21,6 +21,7 @@ const ROUTES = {
   '/api/slots': './netlify/functions/slots.js',
   '/api/book': './netlify/functions/book.js',
   '/api/cabinet': './netlify/functions/cabinet.js',
+  '/api/tg-webhook': './netlify/functions/tg-webhook.js',
 };
 
 const MIME = {
