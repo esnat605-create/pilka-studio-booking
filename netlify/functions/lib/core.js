@@ -67,8 +67,10 @@ function envInt(name, fallback) {
 }
 
 const CONFIG = {
-  // Часовой пояс салона в часах от UTC. Сухум — UTC+4, перевода часов нет.
-  tzOffsetHours: envInt('SALON_TZ_OFFSET', 4),
+  // Часовой пояс салона в часах от UTC. Сухум — UTC+3 (московское время),
+  // перевода часов нет. (Раньше здесь стояло 4 — это было ошибкой: Абхазия
+  // живёт по московскому времени, UTC+3.)
+  tzOffsetHours: envInt('SALON_TZ_OFFSET', 3),
   // На сколько дней вперёд открыта запись.
   horizonDays: envInt('BOOKING_HORIZON_DAYS', 60),
   // Минимальный запас времени до ближайшей записи (минуты). Нельзя записаться
@@ -237,6 +239,39 @@ function salonNow() {
     date: `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`,
     minutes: shifted.getUTCHours() * 60 + shifted.getUTCMinutes(),
   };
+}
+
+// Момент начала записи (date+time — местное время салона) в виде UTC-таймстампа
+// (мс). Нужен, чтобы считать «через сколько часов начнётся визит» относительно
+// текущего момента, не думая каждый раз о часовом поясе. dateStr — 'YYYY-MM-DD',
+// timeStr — 'HH:MM'.
+function apptStartMs(dateStr, timeStr) {
+  const t = (timeStr || '00:00').slice(0, 5);
+  return Date.parse(`${dateStr}T${t}:00Z`) - CONFIG.tzOffsetHours * 3600 * 1000;
+}
+
+// Отправка сообщения через Whapi.Cloud — тем же рабочим номером WhatsApp,
+// которым годами пользуются администраторы вручную (см. подробности в
+// send-reminders.js). Используется и для напоминаний за 24 часа, и для
+// подтверждения записи сразу после её создания.
+async function sendWhapiMessage(phoneDigits, body) {
+  const token = process.env.WHAPI_TOKEN;
+  if (!token) {
+    throw new Error('Не задана переменная окружения WHAPI_TOKEN');
+  }
+  const res = await fetch('https://gate.whapi.cloud/messages/text', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ to: phoneDigits, body }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Whapi ответил ${res.status}: ${text.slice(0, 300)}`);
+  }
+  return res.json().catch(() => ({}));
 }
 
 function isValidDateStr(s) {
@@ -607,6 +642,7 @@ module.exports = {
   WEB_BOOKING_STATUS,
   WEB_BOOKING_SOURCE,
   WEB_BOOKING_AUTHOR,
+  apptStartMs,
   clean,
   cleanMultiline,
   computeFreeSlots,
@@ -636,6 +672,7 @@ module.exports = {
   normalizePhone,
   phoneKey,
   salonNow,
+  sendWhapiMessage,
   timeToMin,
   uid,
   withDb,
