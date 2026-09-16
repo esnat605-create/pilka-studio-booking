@@ -29,7 +29,7 @@
 //  файлах.
 // =============================================================================
 
-const { connect, CONFIG, normalizePhone } = require('./lib/core');
+const { connect, CONFIG, normalizePhone, loadSettings } = require('./lib/core');
 
 function tomorrowDateStr() {
   const shifted = new Date(Date.now() + CONFIG.tzOffsetHours * 3600 * 1000 + 24 * 3600 * 1000);
@@ -41,12 +41,12 @@ function formatTimeRu(timeStr) {
   return `в ${timeStr}`;
 }
 
-function buildMessage({ clientName, timeStr, serviceName }) {
+function buildMessage({ clientName, timeStr, serviceName, salonName }) {
   const name = clientName ? clientName.split(' ')[0] : '';
   const greeting = name ? `Здравствуйте, ${name}!` : 'Здравствуйте!';
   const service = serviceName ? ` на «${serviceName}»` : '';
   return (
-    `${greeting} Напоминаем: завтра ждём вас в ${CONFIG.salonName} ` +
+    `${greeting} Напоминаем: завтра ждём вас в ${salonName} ` +
     `${formatTimeRu(timeStr)}${service}. ` +
     `Адрес: Ардзинба 148. Если планы изменились — напишите нам сюда же, ` +
     `перенесём запись.`
@@ -99,6 +99,7 @@ exports.handler = async (event) => {
 
   const client = await connect();
   try {
+    const settings = await loadSettings(client);
     const targetDate = tomorrowDateStr();
     // Строго ОДНА запись: на завтра и с этим номером телефона. Даже если у
     // клиента с этим номером несколько записей на завтра — берём первую по
@@ -130,6 +131,7 @@ exports.handler = async (event) => {
       clientName: appt.client_name,
       timeStr: appt.time,
       serviceName: appt.service_name,
+      salonName: settings.salonName,
     });
 
     // ?dryRun=1 — показать, что и кому будет отправлено, но ничего реально не

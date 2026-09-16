@@ -22,7 +22,7 @@
 //  — пропускает отменённые записи и неявки.
 // =============================================================================
 
-const { connect, CONFIG, normalizePhone } = require('./lib/core');
+const { connect, CONFIG, normalizePhone, loadSettings } = require('./lib/core');
 
 // Целевая длина паузы между сообщениями — те же 2-5 секунд, с которыми обычно
 // печатает и отправляет человек. Это НЕ защита сама по себе, но снижает шанс
@@ -51,12 +51,12 @@ function formatTimeRu(timeStr) {
   return `в ${timeStr}`;
 }
 
-function buildMessage({ clientName, timeStr, serviceName }) {
+function buildMessage({ clientName, timeStr, serviceName, salonName }) {
   const name = clientName ? clientName.split(' ')[0] : '';
   const greeting = name ? `Здравствуйте, ${name}!` : 'Здравствуйте!';
   const service = serviceName ? ` на «${serviceName}»` : '';
   return (
-    `${greeting} Напоминаем: завтра ждём вас в ${CONFIG.salonName} ` +
+    `${greeting} Напоминаем: завтра ждём вас в ${salonName} ` +
     `${formatTimeRu(timeStr)}${service}. ` +
     `Адрес: Ардзинба 148. Если планы изменились — напишите нам сюда же, ` +
     `перенесём запись.`
@@ -88,6 +88,7 @@ exports.handler = async () => {
   const results = { sent: 0, failed: 0, skipped: 0, errors: [] };
 
   try {
+    const settings = await loadSettings(client);
     const targetDate = tomorrowDateStr();
 
     const { rows } = await client.query(
@@ -117,6 +118,7 @@ exports.handler = async () => {
         clientName: appt.client_name,
         timeStr: appt.time,
         serviceName: appt.service_name,
+        salonName: settings.salonName,
       });
 
       try {
