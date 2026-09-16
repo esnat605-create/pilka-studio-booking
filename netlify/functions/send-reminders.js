@@ -1,34 +1,43 @@
 // =============================================================================
-//  Плановая функция: напоминания клиентам о завтрашней записи через WhatsApp
+//  Плановая функция: напоминания клиентам о записи через WhatsApp
 // =============================================================================
-//  Раз в день (см. расписание в netlify.toml) находит все записи на завтра,
-//  которые ещё не отмечены как «напоминание отправлено», и рассылает клиентам
-//  тёплое сообщение через Whapi.Cloud — тот же рабочий номер WhatsApp, с
-//  которого администраторы годами пишут клиентам вручную.
+//  Раньше запускалась раз в сутки и разом рассылала напоминания всем, у кого
+//  запись «завтра». Проблема: пачка одинаковых сообщений, уходящих в одну и ту
+//  же минуту всем клиентам подряд, для WhatsApp выглядит подозрительно похоже
+//  на рассылку ботом — это повышает риск блокировки рабочего номера.
 //
-//  Почему через уже используемый номер, а не официальный WhatsApp Business
-//  Platform: у номера многолетняя история, сохранённые контакты и клиенты
-//  регулярно отвечают на сообщения — это именно то, что снижает риск
-//  антиспам-блокировки WhatsApp при автоматической отправке. Whapi.Cloud лишь
-//  даёт API поверх того же самого аккаунта (подключение через QR-код), без
-//  привязки к Meta Business Platform и без платы за каждое сообщение.
+//  Теперь функция запускается каждые 15 минут (см. netlify.toml) и на каждом
+//  запуске сама вычисляет, кому именно сейчас пора: напоминание уходит
+//  примерно за 24 часа до времени ЛИЧНОГО визита каждого клиента, а не всем
+//  сразу в одно и то же время суток. Так сообщения естественным образом
+//  распределяются в течение дня, а не приходят одной пачкой.
 //
 //  Что использует и что не трогает:
 //  — читает и обновляет ТОЛЬКО существующий столбец appointments.reminder_sent
 //    ('Да' / 'Нет'), которым администраторы и так помечали ручные напоминания —
 //    новых столбцов и миграций не потребовалось;
 //  — не отправляет повторно тем, у кого reminder_sent уже 'Да' (в том числе
-//    если администратор отметил запись как обзвоненную вручную);
+//    если администратор отметил запись как обзвоненную вручную, или если
+//    запись создавалась меньше чем за 24 часа до визита — в этом случае флаг
+//    сразу проставляется в 'Да' в момент создания записи, см. book.js);
 //  — пропускает отменённые записи и неявки.
 // =============================================================================
 
-const { connect, CONFIG, normalizePhone, loadSettings } = require('./lib/core');
+const { connect, apptStartMs, normalizePhone, loadSettings, sendWhapiMessage } = require('./lib/core');
 
 // Целевая длина паузы между сообщениями — те же 2-5 секунд, с которыми обычно
 // печатает и отправляет человек. Это НЕ защита сама по себе, но снижает шанс
-// того, что резкая пачка сообщений подряд будет выглядеть как рассылка ботом.
+// того, что резкая пачка сообщений подряд (если на одном запуске совпало
+// несколько записей) будет выглядеть как рассылка ботом.
 const MIN_DELAY_MS = 2000;
 const MAX_DELAY_MS = 5000;
+
+// Напоминание отправляем, когда до визита остаётся не больше суток. Верхняя
+// граница окна поиска в базе — с запасом (чуть больше суток), чтобы точный
+// отбор «пора или ещё нет» на 24 часа сделать уже в JS через apptStartMs, не
+// полагаясь на то, что в date/time хранится именно локальное время салона без
+// смещения (там ровно так и есть, но сравнивать удобнее числами, а не строками).
+const REMINDER_WINDOW_MS = 24 * 3600 * 1000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -38,12 +47,14 @@ function randomDelay() {
   return MIN_DELAY_MS + Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS));
 }
 
-// Завтрашняя дата в часовом поясе салона — той же строкой 'YYYY-MM-DD',
-// какой она хранится в appointments.date (см. salonNow() в lib/core.js).
-function tomorrowDateStr() {
-  const shifted = new Date(Date.now() + CONFIG.tzOffsetHours * 3600 * 1000 + 24 * 3600 * 1000);
+// 'YYYY-MM-DD' + N дней → 'YYYY-MM-DD'. Календарная арифметика в UTC —
+// смены часовых поясов внутри суток салона не бывает (нет перехода на летнее
+// время), так что для дат это безопасно.
+function addDaysStr(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
   const pad = (n) => String(n).padStart(2, '0');
-  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
 // 'HH:MM' → 'в 14:30' для человеческого текста сообщения.
@@ -63,49 +74,52 @@ function buildMessage({ clientName, timeStr, serviceName, salonName }) {
   );
 }
 
-async function sendWhapiMessage(phoneDigits, body) {
-  const token = process.env.WHAPI_TOKEN;
-  if (!token) {
-    throw new Error('Не задана переменная окружения WHAPI_TOKEN');
-  }
-  const res = await fetch('https://gate.whapi.cloud/messages/text', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ to: phoneDigits, body }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Whapi ответил ${res.status}: ${text.slice(0, 300)}`);
-  }
-  return res.json().catch(() => ({}));
-}
-
 exports.handler = async () => {
   const client = await connect();
   const results = { sent: 0, failed: 0, skipped: 0, errors: [] };
 
   try {
     const settings = await loadSettings(client);
-    const targetDate = tomorrowDateStr();
+    const now = Date.now();
+
+    // Берём с запасом окно в датах — от сегодняшнего до послезавтрашнего дня
+    // по местному времени салона: этого достаточно, чтобы не пропустить ни
+    // одну запись, у которой 24-часовая отметка попадает на текущий запуск,
+    // при этом выборка из базы остаётся маленькой. Точный отбор «отправлять
+    // именно сейчас или ещё рано» — ниже, через apptStartMs.
+    const nowShifted = new Date(now);
+    const todayStr = nowShifted.toISOString().slice(0, 10);
+    const fromDate = addDaysStr(todayStr, -1);
+    const toDate = addDaysStr(todayStr, 2);
 
     const { rows } = await client.query(
       `
-      SELECT a.id, a.time, a.phone, a.client_name,
+      SELECT a.id, a.date, a.time, a.phone, a.client_name,
              COALESCE(s.name, '') AS service_name
       FROM appointments a
       LEFT JOIN services s ON s.id = a.service_id
-      WHERE a.date = $1
+      WHERE a.date BETWEEN $1 AND $2
         AND a.reminder_sent = 'Нет'
         AND a.status NOT IN ('Отменён клиентом', 'Отменён салоном', 'Не пришёл')
-      ORDER BY a.time
+      ORDER BY a.date, a.time
       `,
-      [targetDate]
+      [fromDate, toDate]
     );
 
     for (const appt of rows) {
+      const startMs = apptStartMs(appt.date, appt.time);
+      const msUntilStart = startMs - now;
+
+      // Ещё рано (больше суток до визита) — отложим до следующего запуска.
+      if (msUntilStart > REMINDER_WINDOW_MS) continue;
+      // Визит уже наступил или прошёл, а напоминание почему-то не ушло
+      // (например, функция не запускалась какое-то время) — отправлять
+      // «завтра ждём вас» после факта смысла нет, пропускаем молча.
+      if (msUntilStart <= 0) {
+        results.skipped++;
+        continue;
+      }
+
       const normalized = normalizePhone(appt.phone);
       if (!normalized.ok) {
         results.skipped++;
@@ -139,7 +153,7 @@ exports.handler = async () => {
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ date: targetDate, ...results }),
+      body: JSON.stringify({ from: fromDate, to: toDate, ...results }),
     };
   } finally {
     await client.end().catch(() => {});

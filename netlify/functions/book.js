@@ -30,6 +30,7 @@ const {
   WEB_BOOKING_AUTHOR,
   WEB_BOOKING_SOURCE,
   WEB_BOOKING_STATUS,
+  apptStartMs,
   clean,
   cleanMultiline,
   computeFreeSlots,
@@ -49,9 +50,42 @@ const {
   normalizePhone,
   phoneKey,
   salonNow,
+  sendWhapiMessage,
   uid,
   withDb,
 } = require('./lib/core.js');
+
+// Если до начала визита меньше суток, отдельное напоминание «за 24 часа» уже
+// не имеет смысла (а то и физически не успеет) — в этом случае клиенту уходит
+// только одно сообщение, подтверждение записи, а флаг reminder_sent сразу
+// ставится в 'Да', чтобы плановая функция send-reminders его не подхватила.
+const REMINDER_WINDOW_MS = 24 * 3600 * 1000;
+
+// 'YYYY-MM-DD' → '20 сентября' — для человеческого текста подтверждения.
+const RU_MONTHS_GEN = [
+  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+];
+function formatDateRu(dateStr) {
+  const [, m, d] = dateStr.split('-').map(Number);
+  return `${d} ${RU_MONTHS_GEN[m - 1]}`;
+}
+
+// Текст подтверждения при заявке с сайта. Запись с сайта создаётся со статусом
+// «Не подтверждён» — салон ещё должен перезвонить и подтвердить, поэтому текст
+// это отражает (в отличие от подтверждения, которое уходит при записи через
+// администратора, см. pilka-studio-admin). Черновик — салон пришлёт свою
+// формулировку, тогда текст поправим.
+function buildConfirmMessage({ clientName, dateStr, timeStr, serviceName, salonName }) {
+  const name = clientName ? clientName.split(' ')[0] : '';
+  const greeting = name ? `Здравствуйте, ${name}!` : 'Здравствуйте!';
+  const service = serviceName ? ` на «${serviceName}»` : '';
+  return (
+    `${greeting} Ваша заявка${service} в ${salonName} принята: ` +
+    `${formatDateRu(dateStr)} в ${timeStr}. Мы перезвоним, чтобы подтвердить запись. ` +
+    `Адрес: Ардзинба 148.`
+  );
+}
 
 // Минимальное время заполнения формы. Живой человек не успевает выбрать услугу,
 // мастера, дату, время и напечатать имя с телефоном за пару секунд — а бот успевает.
@@ -263,6 +297,12 @@ exports.handler = withDb(
       const apptId = uid('a');
       const notes = comment ? `Заявка с сайта: ${comment}` : 'Заявка с сайта';
 
+      // Если до визита меньше суток — напоминание за 24 часа всё равно не
+      // успеет сработать по расписанию, поэтому сразу считаем его «отправленным»
+      // (см. комментарий у REMINDER_WINDOW_MS выше). Клиент в этом случае
+      // получит только подтверждение записи, которое отправляется ниже.
+      const lessThan24h = apptStartMs(date, time) - Date.now() < REMINDER_WINDOW_MS;
+
       await client.query(
         `INSERT INTO appointments
            (id, date, time, duration, master_id, client_name, phone, service_id,
@@ -281,7 +321,7 @@ exports.handler = withDb(
           price,
           0,
           WEB_BOOKING_STATUS,
-          'Нет',
+          lessThan24h ? 'Да' : 'Нет',
           WEB_BOOKING_SOURCE,
           notes,
           Date.now(),
@@ -329,6 +369,27 @@ exports.handler = withDb(
       );
 
       await client.query('COMMIT');
+
+      // -- Подтверждение записи в WhatsApp -----------------------------------
+      // Запись уже сохранена и слот занят независимо от того, получится ли
+      // отправить сообщение, — поэтому ошибка отправки не должна портить ответ
+      // клиенту. Просто логируем и продолжаем.
+      try {
+        const normalizedForMsg = normalizePhone(phone);
+        if (normalizedForMsg.ok) {
+          const phoneDigits = normalizedForMsg.phone.replace(/\D/g, '');
+          const confirmMessage = buildConfirmMessage({
+            clientName,
+            dateStr: date,
+            timeStr: time,
+            serviceName: serviceLabel,
+            salonName: settings.salonName,
+          });
+          await sendWhapiMessage(phoneDigits, confirmMessage);
+        }
+      } catch (err) {
+        console.error('Не удалось отправить подтверждение записи в WhatsApp:', err);
+      }
 
       return {
         booking: {
