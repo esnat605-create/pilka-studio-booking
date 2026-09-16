@@ -295,8 +295,8 @@
   }
 
   // Блок «Услуги»: свёрнутые по умолчанию группы. Раскрываются нажатием,
-  // внутри — услуги, а под услугой с вариантами её варианты со своими ценой и
-  // длительностью.
+  // внутри — услуги с галочками, а под услугой с вариантами её варианты со
+  // своими ценой и длительностью.
   //
   // Сделано на <button> + скрытая панель, а не на <details>: так проще
   // управлять состоянием с клавиатуры и корректно проставить aria-expanded.
@@ -305,6 +305,10 @@
     box.innerHTML = '';
     box.setAttribute('aria-busy', 'false');
     box.classList.add('services--accordion');
+
+    // Прежние строки только что выброшены вместе с содержимым блока.
+    SERVICE_ROWS.length = 0;
+    SERVICE_GROUPS.length = 0;
 
     if (!data.services.length) {
       box.appendChild(el('p', 'slots__empty', 'Список услуг пока не заполнен.'));
@@ -342,8 +346,24 @@
       panel.hidden = true;
 
       var list = el('ul', 'service-group__list');
+
+      // Подсказка внутри раскрытой категории, а не на каждой строке: строк у
+      // салона больше сотни, и приписка у каждой превратила бы прайс в
+      // частокол. Здесь она попадается на глаза ровно один раз — перед тем как
+      // клиент начнёт читать список.
+      var tip = el('li', 'service-group__tip',
+        'Отметьте одну или несколько услуг — форма записи появится здесь же, под списком.');
+      tip.style.order = -1;
+      list.appendChild(tip);
+
+      // Порядок строк задаём через CSS order, а не перестановкой узлов: список
+      // — грид, и order двигает недоступные строки вниз, не трогая разметку.
+      // Шаг в 1000 между позициями оставляет место вариантам услуги и панели
+      // записи, которая встаёт сразу под своей строкой.
+      var pos = 0;
       rows.forEach(function (row) {
         var s = row.service;
+        pos += 1000;
 
         if (row.heading) {
           var head2 = el('li', 'service-head');
@@ -352,18 +372,28 @@
           if (range) head2.appendChild(el('span', 'service-head__from', range));
           list.appendChild(head2);
 
-          row.variants.forEach(function (v) {
-            list.appendChild(serviceRow(v, true));
+          var groupEntries = [];
+          row.variants.forEach(function (v, vi) {
+            var entry = serviceRow(v, true, pos + 10 + vi * 10);
+            groupEntries.push(entry);
+            list.appendChild(entry.li);
           });
+          // Группа вариантов уходит вниз целиком: вариант «— Голени» без своего
+          // заголовка «Лазерная эпиляция» ничего не значит.
+          SERVICE_GROUPS.push({ head: head2, base: pos, entries: groupEntries });
           return;
         }
-        list.appendChild(serviceRow(s, false));
+        list.appendChild(serviceRow(s, false, pos).li);
       });
 
       panel.appendChild(list);
 
       head.addEventListener('click', function () {
         var open = head.getAttribute('aria-expanded') === 'true';
+        // Сворачивают категорию, в которой открыта запись, — форму сначала
+        // возвращаем на место. Иначе она уехала бы вместе с панелью, а раздел
+        // «Онлайн-запись» в этот момент скрыт, и форма исчезла бы совсем.
+        if (open && inlineSlot && panel.contains(inlineSlot)) closeInlineBooking();
         head.setAttribute('aria-expanded', open ? 'false' : 'true');
         panel.hidden = open;
         item.classList.toggle('is-open', !open);
@@ -375,56 +405,295 @@
     });
 
     $('servicesNote').textContent =
-      'Нажмите на категорию, чтобы раскрыть список. Точную стоимость подтвердит мастер — она зависит от длины волос и выбранных материалов.';
+      'Нажмите на категорию, чтобы раскрыть список, и отметьте услуги галочками — ' +
+      'мастер, дата, время и ваши данные появятся здесь же, под списком. Услуги, которые нельзя ' +
+      'сделать за один визит с уже выбранными, становятся серыми и уходят вниз списка. ' +
+      'Точную стоимость подтвердит мастер: она зависит от длины волос и выбранных материалов.';
+    refreshServiceRows();
     $('servicesNote').hidden = false;
   }
 
-  function serviceRow(s, isVariant) {
+  /* ---------------------------------------------------------------------------
+     Строки прайса с галочками
+     ---------------------------------------------------------------------------
+     За один визит клиент часто берёт несколько процедур подряд, но подряд их
+     сделает только мастер, который умеет всё выбранное: визит идёт у одного
+     человека. Поэтому услуги, несовместимые с уже отмеченными, гасим — серые,
+     галочка не ставится, строка уходит вниз списка. Так клиент не соберёт
+     набор, который потом некому выполнить.
+     ------------------------------------------------------------------------ */
+
+  var SERVICE_ROWS = [];   // {id, li, cb, base} — все строки прайса
+  var SERVICE_GROUPS = []; // {head, base, entries} — услуги с вариантами
+  var OFF = 1000000;       // насколько недоступная строка уезжает вниз
+
+  // Есть ли мастер, который сделает весь набор за один визит. Пустой список
+  // услуг у мастера означает «администратор ещё не настраивал» — такой мастер
+  // делает всё; ровно та же логика в подборе мастера и на сервере.
+  function someMasterDoesAll(ids) {
+    if (!state.catalog) return true;
+    var map = state.catalog.masterServices || {};
+    return state.catalog.masters.some(function (m) {
+      var own = map[m.id];
+      if (!own || !own.length) return true;
+      return ids.every(function (id) { return own.indexOf(id) !== -1; });
+    });
+  }
+
+  // Можно ли добавить услугу к уже выбранным.
+  function serviceSelectable(id) {
+    if (state.serviceIds.indexOf(id) !== -1) return true; // уже выбрана — снять можно всегда
+    if (!state.serviceIds.length) return true;            // первая услуга ограничений не знает
+    return someMasterDoesAll(state.serviceIds.concat([id]));
+  }
+
+  // Пересчёт состояния всех строк прайса. Вызывается из renderServicePicker —
+  // это общая точка «выбор изменился», куда сходятся и прайс, и карточки
+  // мастеров, и форма.
+  function refreshServiceRows() {
+    if (!SERVICE_ROWS.length) return;
+    SERVICE_ROWS.forEach(function (row) {
+      var chosen = state.serviceIds.indexOf(row.id) !== -1;
+      var can = serviceSelectable(row.id);
+      row.cb.checked = chosen;
+      row.cb.disabled = !can;
+      row.off = !can;
+      row.li.classList.toggle('service-row--off', !can);
+      row.li.classList.toggle('is-chosen', chosen);
+      if (can) row.li.removeAttribute('aria-disabled');
+      else row.li.setAttribute('aria-disabled', 'true');
+      row.li.title = can ? '' :
+        'Эту услугу нельзя сделать за один визит с уже отмеченными: нет мастера, который делает всё сразу';
+      // Одиночная строка уезжает вниз сама по себе; вариант — только внутри
+      // своей группы, чтобы не оторваться от заголовка.
+      row.li.style.order = row.base + (row.off ? (row.inGroup ? 500 : OFF) : 0);
+    });
+    // Группа вариантов уходит вниз целиком, только если недоступны все её
+    // варианты: иначе заголовок остался бы наверху без своих строк.
+    SERVICE_GROUPS.forEach(function (g) {
+      var allOff = g.entries.length > 0 && g.entries.every(function (e) { return e.off; });
+      g.head.classList.toggle('service-head--off', allOff);
+      g.head.style.order = g.base + (allOff ? OFF : 0);
+      g.entries.forEach(function (e) {
+        e.li.style.order = e.base + (allOff ? OFF : (e.off ? 500 : 0));
+      });
+    });
+  }
+
+  function serviceRow(s, isVariant, base) {
     var price = priceLabel(s);
     var desc = (s.description || '').trim();
+    var li = el('li', 'service-row' + (isVariant ? ' service-row--variant' : '') + (desc ? ' service-row--rich' : ''));
+    li.style.order = base;
 
-    // Без описания оставляем прежний компактный вид в одну строку: дешёвым
-    // допам вроде «Снятие» развёрнутая карточка ни к чему, она только
-    // растягивает список на пустом месте.
+    var body = el('div', 'service-row__body');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'service-row__box';
+    cb.value = s.id;
+    cb.setAttribute('aria-label', s.name);
+    body.appendChild(cb);
+
+    var entry = { id: s.id, li: li, cb: cb, base: base, inGroup: !!isVariant, off: false };
+    SERVICE_ROWS.push(entry);
+
+    function toggled() {
+      if (cb.checked) {
+        // Услуга добавляется к набору, и панель записи встаёт под этой строкой.
+        openInlineBooking(s.id, li);
+      } else {
+        toggleService(s.id, false);
+        // Снята последняя — записываться не на что, панель закрываем.
+        if (!state.serviceIds.length) closeInlineBooking();
+      }
+    }
+    cb.addEventListener('change', toggled);
+    // Нажатие в любое место строки равносильно нажатию на галочку: попадать
+    // пальцем в квадратик 20×20 на телефоне неудобно. Сам чекбокс и кнопка
+    // «ещё» обрабатываются отдельно, иначе выбор сработал бы дважды.
+    li.addEventListener('click', function (ev) {
+      if (cb.disabled) return;
+      if (ev.target === cb) return;
+      if (ev.target.closest && ev.target.closest('.service-row__more')) return;
+      cb.checked = !cb.checked;
+      toggled();
+    });
+
+    // Без описания — прежний компактный вид в одну строку: дешёвым допам вроде
+    // «Снятия» развёрнутая карточка ни к чему, она только растягивает список.
     if (!desc) {
-      var li = el('li', 'service-row' + (isVariant ? ' service-row--variant' : ''));
-      li.appendChild(el('span', 'service-row__name', s.name));
+      body.appendChild(el('span', 'service-row__name', s.name));
       var meta = el('span', 'service-row__meta');
       meta.appendChild(el('span', 'service-row__dur', formatDuration(s.duration)));
       if (price) meta.appendChild(el('span', 'service-row__price', price));
-      li.appendChild(meta);
-      return li;
+      body.appendChild(meta);
+      li.appendChild(body);
+      return entry;
     }
 
-    var card = el('li', 'service-row service-row--rich' + (isVariant ? ' service-row--variant' : ''));
-    card.appendChild(el('span', 'service-row__name', s.name));
+    var main = el('span', 'service-row__main');
+    main.appendChild(el('span', 'service-row__name', s.name));
 
     // Кнопка «ещё» лежит РЯДОМ с текстом, а не внутри него: внутри усекаемого
     // абзаца она обрезалась бы вместе с текстом, и нажать её было бы нечем.
-    var line = el('p', 'service-row__desc');
-    var text = el('span', 'service-row__text', formatDuration(s.duration) + ' · ' + desc);
-    line.appendChild(text);
-
+    var line = el('span', 'service-row__desc');
+    line.appendChild(el('span', 'service-row__text', formatDuration(s.duration) + ' · ' + desc));
     var more = el('button', 'service-row__more', 'ещё');
     more.type = 'button';
     more.setAttribute('aria-expanded', 'false');
-    more.addEventListener('click', function () {
+    more.addEventListener('click', function (ev) {
+      ev.stopPropagation();
       var open = more.getAttribute('aria-expanded') === 'true';
       more.setAttribute('aria-expanded', open ? 'false' : 'true');
       more.textContent = open ? 'ещё' : 'свернуть';
       line.classList.toggle('is-open', !open);
     });
     line.appendChild(more);
-    card.appendChild(line);
+    main.appendChild(line);
 
-    if (price) card.appendChild(el('span', 'service-row__price service-row__price--big', price));
-    return card;
+    if (price) main.appendChild(el('span', 'service-row__price service-row__price--big', price));
+    body.appendChild(main);
+    li.appendChild(body);
+    return entry;
+  }
+
+  // Чем занимается мастер — одной строкой.
+  //
+  // Перечислять услуги дословно нельзя: у мастера эпиляции их два десятка, и
+  // карточка превратилась бы в простыню. Поэтому сворачиваем до направлений:
+  // берём категорию услуги (а если её нет — название группы) и показываем
+  // несколько самых частых.
+  var MAX_DIRECTIONS = 4;
+  function masterDirections(master, data) {
+    var own = (data.masterServices || {})[master.id];
+    if (!own || !own.length) return 'Все услуги салона';
+    var byId = {};
+    data.services.forEach(function (s) { byId[s.id] = s; });
+    var counts = {};
+    own.forEach(function (id) {
+      var s = byId[id];
+      if (!s) return;
+      var name = (s.category || '').trim();
+      if (!name && s.parentId && byId[s.parentId]) name = byId[s.parentId].name;
+      if (!name) return;
+      counts[name] = (counts[name] || 0) + 1;
+    });
+    var names = Object.keys(counts).sort(function (a, b) {
+      if (counts[b] !== counts[a]) return counts[b] - counts[a];
+      return a.localeCompare(b, 'ru');
+    });
+    if (!names.length) return '';
+    var shown = names.slice(0, MAX_DIRECTIONS);
+    var rest = names.length - shown.length;
+    // Заголовки категорий в базе набраны по-разному («МАНИКЮР», «Маникюр») —
+    // приводим к одному виду, иначе строка выглядит неряшливо.
+    var text = shown.map(function (n) { return n.charAt(0).toUpperCase() + n.slice(1).toLowerCase(); }).join(' · ');
+    return rest > 0 ? text + ' и ещё ' + rest : text;
+  }
+
+  // Услуги конкретного мастера — те, что можно записать.
+  //
+  // Пустой список в справочнике означает «администратор ещё не настраивал» —
+  // такой мастер делает всё, ровно как в подборе мастера под выбранные услуги.
+  // Родительские позиции («Маникюр» с вариантами внутри) отсеиваем: записаться
+  // на них нельзя, в форме их тоже нет.
+  function masterServiceList(master, data) {
+    var all = data.services || [];
+    var bookable = all.filter(function (s) { return isBookable(s, all); });
+    var own = (data.masterServices || {})[master.id];
+    if (!own || !own.length) return bookable;
+    return bookable.filter(function (s) { return own.indexOf(s.id) !== -1; });
+  }
+
+  // Галочки в раскрытых карточках мастеров и список услуг в форме — это один и
+  // тот же выбор, показанный в двух местах. Разойтись им нельзя: клиент отметил
+  // услугу у мастера, прокрутил к форме — и она обязана быть отмечена и там.
+  // Поэтому каждая построенная панель оставляет здесь свою функцию обновления.
+  var MASTER_PANEL_SYNCS = [];
+  function syncMasterPanels() { MASTER_PANEL_SYNCS.forEach(function (fn) { fn(); }); }
+
+  // Раскрывающийся список услуг мастера: галочками отмечают одну или несколько
+  // услуг прямо здесь, а кнопка внизу уводит к выбору даты и времени с уже
+  // подставленным мастером.
+  function masterPanelContent(m, data) {
+    var box = document.createDocumentFragment();
+    var wrap = el('div', 'master-panel__inner');
+    box.appendChild(wrap);
+
+    var list = masterServiceList(m, data);
+    if (!list.length) {
+      wrap.appendChild(el('p', 'master-panel__empty',
+        'Услуги этого мастера ещё не настроены — выберите услугу в форме записи ниже.'));
+      return box;
+    }
+
+    wrap.appendChild(el('p', 'master-panel__hint', 'Отметьте услуги — можно несколько, цена и время сложатся.'));
+
+    var boxes = [];
+    var groups = groupServices(list);
+    var listBox = el('div', 'master-svc');
+    groups.forEach(function (group) {
+      // Заголовок категории нужен, только когда категорий несколько: у мастера
+      // с тремя услугами одного направления он был бы лишним шумом.
+      if (groups.length > 1) listBox.appendChild(el('p', 'master-svc__group', group.title));
+      group.items.forEach(function (s) {
+        // <label> с галочкой внутри: нажатие в любое место строки переключает
+        // её, и это работает само, без обработчиков.
+        var row = el('label', 'master-svc__row');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = s.id;
+        cb.checked = state.serviceIds.indexOf(s.id) !== -1;
+        cb.addEventListener('change', function () { toggleService(s.id, cb.checked); });
+        boxes.push(cb);
+        row.appendChild(cb);
+        row.appendChild(el('span', 'master-svc__name', serviceFullName(s)));
+        var price = priceLabel(s);
+        row.appendChild(el('span', 'master-svc__meta', formatDuration(s.duration) + (price ? ' · ' + price : '')));
+        // Без остановки всплытия нажатие по строке дошло бы до шапки карточки и
+        // свернуло панель ровно в тот момент, когда клиент ставит галочку.
+        row.addEventListener('click', function (ev) { ev.stopPropagation(); });
+        listBox.appendChild(row);
+      });
+    });
+    wrap.appendChild(listBox);
+
+    // Подвал лежит НЕ в прокручиваемой части: у мастера с большим списком итог
+    // и кнопку пришлось бы искать в самом низу прокрутки.
+    var foot = el('div', 'master-panel__foot');
+    var total = el('p', 'master-panel__total');
+    var err = el('p', 'master-panel__err');
+    var pick = el('button', 'btn btn--primary btn--sm master-panel__pick', 'Выбрать время');
+    pick.type = 'button';
+    pick.addEventListener('click', function (ev) { ev.stopPropagation(); goToTimeWithMaster(m.id, err); });
+    foot.appendChild(total);
+    foot.appendChild(pick);
+    foot.appendChild(err);
+    box.appendChild(foot);
+
+    function sync() {
+      boxes.forEach(function (cb) { cb.checked = state.serviceIds.indexOf(cb.value) !== -1; });
+      var t = selectionTotals();
+      pick.disabled = t.count === 0;
+      total.textContent = t.count
+        ? 'Выбрано: ' + t.count + ' · ' + formatPrice(t.price) + ' · ' + formatDuration(t.duration)
+        : 'Ничего не отмечено';
+      // Выбор изменился — прежняя жалоба могла стать неверной.
+      err.textContent = '';
+    }
+    MASTER_PANEL_SYNCS.push(sync);
+    sync();
+
+    return box;
   }
 
   function renderMasters(data) {
     var box = $('mastersList');
     box.innerHTML = '';
     box.setAttribute('aria-busy', 'false');
+    // Старые панели вместе с карточками только что выброшены — их функции
+    // обновления держали бы ссылки на элементы, которых больше нет.
+    MASTER_PANEL_SYNCS.length = 0;
 
     if (!data.masters.length) {
       box.appendChild(el('p', 'slots__empty', 'Список мастеров пока не заполнен.'));
@@ -432,6 +701,9 @@
     }
 
     data.masters.forEach(function (m) {
+      // Ячейка сетки — обёртка: внутри шапка-кнопка и скрытый список услуг.
+      // Раскрытие меняет высоту только своей карточки, соседние не растягивает.
+      var item = el('div', 'master');
       var card = el('div', 'master-card');
 
       // Фото, если администратор его указал; иначе — первая буква имени.
@@ -456,12 +728,51 @@
         card.appendChild(el('div', 'master-card__initial', (m.name || '?').trim().charAt(0).toUpperCase()));
       }
 
-      var info = el('div');
+      var info = el('div', 'master-card__info');
       info.appendChild(el('div', 'master-card__name', m.name));
       if (m.spec) info.appendChild(el('div', 'master-card__spec', m.spec));
+      var does = masterDirections(m, data);
+      if (does) info.appendChild(el('div', 'master-card__does', does));
       card.appendChild(info);
 
-      box.appendChild(card);
+      var chevron = el('span', 'master-card__chevron');
+      chevron.setAttribute('aria-hidden', 'true');
+      card.appendChild(chevron);
+
+      // Карточка мастера — кнопка: нажатие раскрывает список его услуг.
+      var panel = el('div', 'master-panel');
+      panel.id = 'masterPanel-' + m.id;
+      panel.hidden = true;
+
+      card.classList.add('master-card--pick');
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('aria-expanded', 'false');
+      card.setAttribute('aria-controls', panel.id);
+      card.title = 'Показать услуги мастера';
+
+      var built = false;
+      function toggle() {
+        var open = card.getAttribute('aria-expanded') === 'true';
+        // Содержимое собираем при первом раскрытии: у мастера без настроенного
+        // списка в панели весь прайс салона, и строить его всем мастерам сразу
+        // при загрузке страницы незачем.
+        if (!open && !built) {
+          panel.appendChild(masterPanelContent(m, data));
+          built = true;
+        }
+        card.setAttribute('aria-expanded', open ? 'false' : 'true');
+        panel.hidden = open;
+        item.classList.toggle('is-open', !open);
+      }
+      card.addEventListener('click', toggle);
+      card.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); }
+      });
+
+      item.appendChild(card);
+      item.appendChild(panel);
+      box.appendChild(item);
     });
   }
 
@@ -564,13 +875,19 @@
     var total = $('fServiceTotal');
     total.hidden = totals.count === 0;
     if (totals.count) {
-      total.textContent = 'Итого: ' + formatPrice(totals.price) + ' · ' + formatDuration(totals.duration);
+      // Названия, а не только сумма: во встроенной форме список услуг свёрнут,
+      // и без них клиент не видит, на что именно записывается.
+      total.textContent = chosen.map(serviceFullName).join(' + ') + ' — ' +
+        formatPrice(totals.price) + ' · ' + formatDuration(totals.duration);
     }
+
+    // Тот же выбор показан галочками в раскрытых карточках мастеров и в самом
+    // прайсе — расходиться этим трём местам нельзя.
+    syncMasterPanels();
+    refreshServiceRows();
+    renderPickBar();
   }
 
-  // Мастер делает услугу, если она есть в его списке. Пустой список означает
-  // «администратор ещё не настраивал» — такой мастер делает всё. Ровно та же
-  // логика работает в админке и на сервере.
   // Выходные выбранного мастера. Пустой список означает «работает всегда» —
   // это поведение по умолчанию, пока администратор не заполнил график.
   function daysOffForMaster(masterId) {
@@ -794,6 +1111,196 @@
   /* ---------------------------------------------------------------------------
      Изменение выбора. Каждая функция сбрасывает то, что от неё зависит.
      ------------------------------------------------------------------------ */
+
+  /* ---------------------------------------------------------------------------
+     Запись прямо из списка услуг
+     ---------------------------------------------------------------------------
+     Форма не дублируется, а ПЕРЕЕЗЖАЕТ: тот же самый DOM-узел формы переносится
+     под выбранную строку прайса и возвращается на место при закрытии. Вторая,
+     отдельно написанная форма неизбежно разошлась бы с этой в проверках,
+     расчёте свободного времени и отправке — а так расходиться нечему, узел
+     один.
+     ------------------------------------------------------------------------ */
+  var inlineSlot = null; // <li>, в который переехала форма; null — форма дома
+
+  function bookingBox() { return $('bookingBox'); }
+
+  // Внутри строки прайса длинный список всех услуг салона ни к чему: клиент уже
+  // выбрал услугу нажатием. Показываем итог, а список прячем за кнопкой.
+  function setInlineFormMode(on) {
+    var form = $('bookingForm');
+    var toggle = $('fServiceToggle');
+    if (!form) return;
+    form.classList.toggle('form--inline', on);
+    form.classList.remove('is-picking');
+    if (toggle) {
+      toggle.hidden = !on;
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.textContent = 'Изменить услуги';
+    }
+  }
+
+  /* ---------------------------------------------------------------------------
+     Нижняя панель выбора
+     ---------------------------------------------------------------------------
+     Пока клиент отмечает услуги, форма записи стоит под списком категории и
+     часто оказывается за краем экрана. Панель держит перед глазами итог и даёт
+     перейти к записи одним нажатием — не отвлекая от выбора и не уводя из
+     списка после первой же галочки. Показываем её, только когда форма
+     действительно не видна: висеть поверх формы, к которой она же и ведёт,
+     панели незачем.
+     ------------------------------------------------------------------------ */
+  var panelOffScreen = true;
+  var panelWatcher = null;
+
+  function watchInlinePanel() {
+    if (panelWatcher) { panelWatcher.disconnect(); panelWatcher = null; }
+    if (!inlineSlot) { panelOffScreen = true; renderPickBar(); return; }
+    if (!window.IntersectionObserver) {
+      // Без наблюдателя показываем панель всегда: лучше лишняя кнопка, чем
+      // потерянная форма.
+      panelOffScreen = true;
+      renderPickBar();
+      return;
+    }
+    panelWatcher = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { panelOffScreen = !e.isIntersecting; });
+      renderPickBar();
+    }, { threshold: 0.1 });
+    panelWatcher.observe(inlineSlot);
+  }
+
+  function renderPickBar() {
+    var bar = $('pickBar');
+    if (!bar) return;
+    var totals = selectionTotals();
+    var show = !!inlineSlot && totals.count > 0 && panelOffScreen;
+    bar.hidden = !show;
+    document.body.classList.toggle('has-pickbar', show);
+    if (!show) return;
+    // «Выбрано 2 услуги» — с правильным окончанием: «1 услуга», «2 услуги»,
+    // «5 услуг». Мелочь, но текст с ошибкой в согласовании читается как брак.
+    var n = totals.count;
+    var last = n % 10;
+    var word = (n % 100 >= 11 && n % 100 <= 14) ? 'услуг' : last === 1 ? 'услуга' : (last >= 2 && last <= 4) ? 'услуги' : 'услуг';
+    $('pickBarInfo').textContent = n + ' ' + word + ' · ' + formatPrice(totals.price) + ' · ' + formatDuration(totals.duration);
+  }
+
+  function closeInlineBooking(opts) {
+    if (!inlineSlot) return;
+    var home = $('bookingHome');
+    if (home) home.appendChild(bookingBox());
+    setInlineFormMode(false);
+    var section = $('booking');
+    if (section) section.hidden = false;
+    var skip = document.querySelector('.skip-link');
+    if (skip) skip.setAttribute('href', '#booking');
+    if (inlineSlot.parentNode) inlineSlot.parentNode.removeChild(inlineSlot);
+    inlineSlot = null;
+    watchInlinePanel();
+    // Возврат фокуса на строку, из которой открывали, — иначе после закрытия
+    // с клавиатуры фокус уезжает в начало страницы.
+    if (opts && opts.focusRow && opts.focusRow.focus) opts.focusRow.focus();
+  }
+
+  function openInlineBooking(serviceId, rowNode) {
+    // После успешной записи на месте формы висит «Вы записаны». Если клиент
+    // тут же выбирает следующую услугу, ему нужна чистая форма, а не прошлый
+    // результат — иначе панель откроется с сообщением о прежней записи.
+    if (!$('done').hidden) resetForm();
+
+    // Услуга именно добавляется, а не заменяет набор: за один визит клиент
+    // часто берёт несколько процедур подряд, и так это и задумано.
+    if (state.serviceIds.indexOf(serviceId) === -1) toggleService(serviceId, true);
+    else renderServicePicker();
+
+    var list = rowNode && rowNode.parentNode;
+    if (!list) { jumpToBooking(''); return; }
+
+    // Панель уже открыта — просто переставляем её под новую строку, не
+    // пересобирая: так не теряются введённые имя и телефон.
+    var fresh = !inlineSlot;
+    if (!inlineSlot) {
+      inlineSlot = el('li', 'svc-book');
+      inlineSlot.id = 'svcBookSlot';
+      var head = el('div', 'svc-book__head');
+      head.appendChild(el('span', 'svc-book__title', 'Запись'));
+      var close = el('button', 'svc-book__close', '✕');
+      close.type = 'button';
+      close.setAttribute('aria-label', 'Закрыть запись');
+      close.addEventListener('click', function () { closeInlineBooking({ focusRow: rowNode }); });
+      head.appendChild(close);
+      inlineSlot.appendChild(head);
+      inlineSlot.appendChild(bookingBox());
+
+      var section = $('booking');
+      if (section) section.hidden = true;
+      var skip = document.querySelector('.skip-link');
+      if (skip) skip.setAttribute('href', '#svcBookSlot');
+    }
+
+    // Панель встаёт ПОД списком услуг категории, а не вплотную под нажатой
+    // строкой: услуг выбирают несколько, и форма посреди списка заставляла бы
+    // прокручивать её целиком, чтобы отметить вторую услугу. Порядок задаём
+    // числом между доступными строками и погашенными — так форма оказывается
+    // сразу после того, что ещё можно выбрать.
+    list.appendChild(inlineSlot);
+    inlineSlot.style.order = OFF / 2;
+
+    // Переключаем вид формы только ПОСЛЕ вставки панели в страницу:
+    // getElementById находит элементы лишь в документе, а до этой строки форма
+    // лежит в ещё не вставленном узле и по id не находится вовсе.
+    setInlineFormMode(true);
+
+    // К форме НЕ прокручиваем — ни при первом выборе, ни при следующих.
+    // В длинной категории первая же галочка уносила бы клиента в конец
+    // списка, и чтобы отметить вторую услугу, приходилось листать обратно.
+    // Теперь о том, что выбор сделан, сообщает нижняя панель, а перейти к
+    // записи клиент решает сам.
+    if (fresh) watchInlinePanel();
+  }
+
+  // Переход к форме записи с уже сделанным выбором. Нужен блокам «Услуги» и
+  // «Мастера»: записаться можно прямо оттуда, не пролистывая страницу назад и
+  // не выбирая всё заново.
+  function jumpToBooking(focusId) {
+    var target = document.getElementById('booking');
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!focusId) return;
+    // Фокус ставим после прокрутки: иначе браузер дёрнет страницу к элементу
+    // сам и плавность потеряется.
+    window.setTimeout(function () {
+      var n = document.getElementById(focusId);
+      if (n) n.focus({ preventScroll: true });
+    }, 450);
+  }
+
+  // Кнопка «Выбрать время» в раскрытой карточке мастера: ставим мастера и
+  // уводим сразу к календарю — услуги клиент уже отметил галочками выше.
+  //
+  // Сообщения о помехах пишем в саму карточку, а не в форму: клиент смотрит
+  // сюда, и ошибка, выведенная за экран, для него равна молчанию.
+  function goToTimeWithMaster(masterId, errNode) {
+    function complain(text) { if (errNode) errNode.textContent = text; }
+    if (!state.serviceIds.length) { complain('Отметьте хотя бы одну услугу.'); return; }
+    // В наборе может остаться услуга, отмеченная у другого мастера. Визит идёт
+    // подряд у одного человека, поэтому такой набор неисполним.
+    if (!mastersForSelection().some(function (m) { return m.id === masterId; })) {
+      complain('Отмечено что-то, чего этот мастер не делает. В списке выше только его услуги — лишние галочки снимите в форме записи.');
+      return;
+    }
+    complain('');
+    $('fMaster').value = masterId;
+    setMaster(masterId);
+    // Если форма сейчас живёт в списке услуг, раздел «Онлайн-запись» скрыт —
+    // прокручивать к нему бессмысленно, сперва возвращаем форму на место.
+    closeInlineBooking();
+    // Ведём к шагу с датой, а не к началу формы: услуга и мастер уже выбраны,
+    // и первое, что осталось сделать, — выбрать день.
+    var step = document.getElementById('calendar');
+    if (step) step.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else jumpToBooking('');
+  }
 
   function toggleService(id, on) {
     var i = state.serviceIds.indexOf(id);
@@ -1074,7 +1581,19 @@
 
   function bindEvents() {
     $('fServiceSearch').addEventListener('input', renderServicePicker);
+    $('pickBarGo').addEventListener('click', function () {
+      if (inlineSlot) inlineSlot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
     $('fMaster').addEventListener('change', function () { setMaster(this.value); });
+    // «Изменить услуги» во встроенной форме: раскрывает обычный список, чтобы
+    // можно было добавить процедуру к визиту или снять лишнюю.
+    $('fServiceToggle').addEventListener('click', function () {
+      var form = $('bookingForm');
+      var open = form.classList.toggle('is-picking');
+      this.setAttribute('aria-expanded', open ? 'true' : 'false');
+      this.textContent = open ? 'Свернуть список' : 'Изменить услуги';
+      if (open) $('fServiceSearch').focus();
+    });
 
     $('calPrev').addEventListener('click', function () { shiftMonth(-1); });
     $('calNext').addEventListener('click', function () { shiftMonth(1); });
