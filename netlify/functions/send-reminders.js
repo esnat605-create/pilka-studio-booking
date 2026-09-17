@@ -62,15 +62,17 @@ function formatTimeRu(timeStr) {
   return `в ${timeStr}`;
 }
 
-function buildMessage({ clientName, timeStr, serviceName, salonName }) {
+function buildMessage({ clientName, timeStr, serviceName, masterName, salonName }) {
   const name = clientName ? clientName.split(' ')[0] : '';
   const greeting = name ? `Здравствуйте, ${name}!` : 'Здравствуйте!';
-  const service = serviceName ? ` на «${serviceName}»` : '';
+  const service = serviceName ? ` на услугу «${serviceName}»` : '';
+  const master = masterName ? ` к мастеру ${masterName}` : '';
   return (
-    `${greeting} Напоминаем: завтра ждём вас в ${salonName} ` +
-    `${formatTimeRu(timeStr)}${service}. ` +
-    `Адрес: Ардзинба 148. Если планы изменились — напишите нам сюда же, ` +
-    `перенесём запись.`
+    `${greeting} ${salonName} напоминает вам, что вы записаны завтра ` +
+    `${formatTimeRu(timeStr)}${service}${master}. ` +
+    `С нетерпением ждём вас по адресу: Ардзинба 148. ` +
+    `Если у вас поменялись планы или вы хотите перенести запись, просим вас уведомить! ` +
+    `С любовью, ваша ${salonName}.`
   );
 }
 
@@ -95,9 +97,11 @@ exports.handler = async () => {
     const { rows } = await client.query(
       `
       SELECT a.id, a.date, a.time, a.phone, a.client_name,
-             COALESCE(s.name, '') AS service_name
+             COALESCE(s.name, '') AS service_name,
+             COALESCE(m.name, '') AS master_name
       FROM appointments a
       LEFT JOIN services s ON s.id = a.service_id
+      LEFT JOIN masters m ON m.id = a.master_id
       WHERE a.date BETWEEN $1 AND $2
         AND a.reminder_sent = 'Нет'
         AND a.status NOT IN ('Отменён клиентом', 'Отменён салоном', 'Не пришёл')
@@ -132,6 +136,7 @@ exports.handler = async () => {
         clientName: appt.client_name,
         timeStr: appt.time,
         serviceName: appt.service_name,
+        masterName: appt.master_name,
         salonName: settings.salonName,
       });
 
