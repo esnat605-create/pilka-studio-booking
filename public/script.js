@@ -733,6 +733,11 @@
       if (m.spec) info.appendChild(el('div', 'master-card__spec', m.spec));
       var does = masterDirections(m, data);
       if (does) info.appendChild(el('div', 'master-card__does', does));
+      // Мастер принимает только в определённые часы — показываем их сразу,
+      // чтобы клиент не удивлялся, почему в сетке всего несколько вариантов.
+      if (m.fixedTimes && m.fixedTimes.length) {
+        info.appendChild(el('div', 'master-card__times', 'Приём: ' + m.fixedTimes.join(' · ')));
+      }
       card.appendChild(info);
 
       var chevron = el('span', 'master-card__chevron');

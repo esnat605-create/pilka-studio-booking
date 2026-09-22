@@ -60,10 +60,21 @@
   to = "/.netlify/functions/tg-webhook"
   status = 200
 
+[[redirects]]
+  from = "/api/works"
+  to = "/.netlify/functions/works"
+  status = 200
+
 # Красивый адрес кабинета вместо /cabinet.html
 [[redirects]]
   from = "/cabinet"
   to = "/cabinet.html"
+  status = 200
+
+# Отдельная страница с фотографиями работ мастеров
+[[redirects]]
+  from = "/works"
+  to = "/works.html"
   status = 200
 
 # -----------------------------------------------------------------------------

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Работы мастеров — Pilka Studio</title>
+<meta name="description" content="Фотографии работ мастеров Pilka Studio, Сухум: маникюр, педикюр, наращивание, брови и ресницы.">
+<meta name="theme-color" content="#faf5ef">
+<meta name="color-scheme" content="light">
+
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Работы мастеров — Pilka Studio">
+<meta property="og:description" content="Фотографии работ наших мастеров. Понравилось — запишитесь онлайн.">
+<meta property="og:image" content="/assets/og-image.jpg">
+<meta property="og:locale" content="ru_RU">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+<a class="skip-link" href="#worksMain">Перейти к содержимому</a>
+
+<header class="site-header" id="siteHeader">
+  <div class="wrap site-header__inner">
+    <a class="site-header__brand" href="/" aria-label="Pilka Studio — на главную">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" width="34" height="34">
+          <circle cx="32" cy="32" r="32" fill="var(--blush)"/>
+          <text x="26.6" y="34" text-anchor="middle" font-family="var(--font-display)" font-weight="400" font-size="30" fill="var(--ink)">P</text>
+          <text x="36.5" y="41" text-anchor="middle" font-family="var(--font-display)" font-weight="400" font-size="20.5" fill="var(--ink)">S</text>
+        </svg>
+      </span>
+      <span class="brand-word">Pilka<span class="brand-word__studio">Studio</span></span>
+    </a>
+
+    <nav class="site-nav" aria-label="Разделы">
+      <a href="/#services">Услуги</a>
+      <a href="/#masters">Мастера</a>
+      <a href="/works" aria-current="page">Работы мастеров</a>
+      <a href="/#contacts">Контакты</a>
+    </nav>
+
+    <a class="btn btn--primary btn--sm site-header__cta" href="/cabinet">Кабинет</a>
+  </div>
+</header>
+
+<main id="worksMain" class="section">
+  <div class="wrap">
+    <p class="section__eyebrow">Портфолио</p>
+    <h1 class="section__title">Работы мастеров</h1>
+    <p class="works__lead">
+      Фотографии работ наших мастеров. Выберите мастера, чтобы посмотреть только его работы,
+      и нажмите на фото, чтобы открыть его крупно.
+    </p>
+
+    <!-- Фильтр по мастерам. Заполняется скриптом. -->
+    <div class="works-filter" id="worksFilter" role="group" aria-label="Мастер" hidden></div>
+
+    <div id="worksBox" aria-busy="true">
+      <div class="works-grid">
+        <div class="skeleton works-skel"></div>
+        <div class="skeleton works-skel"></div>
+        <div class="skeleton works-skel"></div>
+        <div class="skeleton works-skel"></div>
+      </div>
+    </div>
+
+    <div class="works__cta">
+      <a class="btn btn--primary" href="/#masters">Записаться к мастеру</a>
+    </div>
+  </div>
+</main>
+
+<!-- Просмотр фото крупно -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Фотография работы" hidden>
+  <button type="button" class="lightbox__close" id="lbClose" aria-label="Закрыть">✕</button>
+  <button type="button" class="lightbox__nav lightbox__nav--prev" id="lbPrev" aria-label="Предыдущее фото">‹</button>
+  <figure class="lightbox__fig">
+    <img id="lbImg" alt="">
+    <figcaption class="lightbox__cap" id="lbCap"></figcaption>
+  </figure>
+  <button type="button" class="lightbox__nav lightbox__nav--next" id="lbNext" aria-label="Следующее фото">›</button>
+</div>
+
+<footer class="site-footer">
+  <div class="wrap site-footer__inner">
+    <span class="site-footer__brand">Pilka Studio</span>
+    <span class="site-footer__copy">Сухум, ул. Ардзинба 148 · +7 940 775 11 66</span>
+    <nav class="site-footer__nav" aria-label="Страницы сайта">
+      <a href="/">Онлайн-запись</a>
+      <a href="/cabinet">Личный кабинет</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="/works.js" defer></script>
+</body>
+</html>

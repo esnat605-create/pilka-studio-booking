@@ -1470,3 +1470,205 @@ textarea.control { min-height: 96px; resize: vertical; line-height: 1.5; }
   gap: var(--s-3);
   margin-top: var(--s-7);
 }
+
+/* -----------------------------------------------------------------------------
+   Мелкие добавления: ссылка на работы под мастерами, меню в подвале,
+   время приёма в карточке мастера
+   -------------------------------------------------------------------------- */
+.masters__more {
+  margin-top: var(--s-5);
+  text-align: center;
+}
+.master-card__times {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.site-footer__nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-2) var(--s-5);
+  font-size: 13px;
+}
+.site-footer__nav a {
+  color: var(--ink-2);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line-strong);
+  padding-block: 6px 2px;
+}
+.site-footer__nav a:hover { color: var(--terracotta-dk); border-bottom-color: var(--terracotta); }
+.site-nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--terracotta); }
+
+/* -----------------------------------------------------------------------------
+   Кабинет: отмена и перенос записи
+   -------------------------------------------------------------------------- */
+.alert--ok {
+  background: #eef5ef;
+  border: 1px solid #cfe2d3;
+  color: var(--success);
+  margin-bottom: var(--s-5);
+}
+.cab-visit__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+.cab-btn--danger { color: var(--danger); }
+.cab-btn--danger:hover { border-color: var(--danger); background: var(--danger-soft); }
+.cab-visit__note {
+  grid-column: 1 / -1;
+  margin-top: var(--s-2);
+  font-size: 13px;
+  color: var(--muted);
+}
+.cab-change {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+  padding: var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.cab-change[hidden] { display: none; }
+.cab-change__q { font-size: 15px; }
+.cab-change__row { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.cab-change .field-error:empty { display: none; }
+
+/* -----------------------------------------------------------------------------
+   Страница «Работы мастеров»
+   -------------------------------------------------------------------------- */
+.works__lead {
+  max-width: 60ch;
+  margin: calc(-1 * var(--s-3)) 0 var(--s-5);
+  color: var(--ink-2);
+}
+.works-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-6);
+}
+.works-filter[hidden] { display: none; }
+.works-chip {
+  min-height: 40px;
+  padding: var(--s-2) var(--s-4);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.works-chip:hover { border-color: var(--ink-2); background: var(--surface-2); }
+.works-chip[aria-pressed="true"],
+.works-chip[aria-pressed="true"]:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
+.works-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.works-master + .works-master { margin-top: var(--s-7); }
+.works-master__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-3);
+  margin-bottom: var(--s-4);
+}
+.works-master__name { font-size: 26px; font-weight: 400; }
+.works-master__spec { font-size: 14px; color: var(--muted); }
+
+.works-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+@media (min-width: 640px) { .works-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3); } }
+@media (min-width: 1024px) { .works-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+.works-skel { aspect-ratio: 1 / 1; height: auto; }
+.works-item {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface-2);
+  aspect-ratio: 1 / 1;
+  cursor: zoom-in;
+}
+.works-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 400ms var(--ease);
+}
+.works-item:hover img { transform: scale(1.03); }
+.works-item:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.works-item__cap {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: var(--s-5) var(--s-2) var(--s-2);
+  background: linear-gradient(transparent, rgba(20, 14, 10, 0.6));
+  color: #fff;
+  font-size: 12px;
+  text-align: left;
+}
+.works__cta { margin-top: var(--s-7); text-align: center; }
+
+/* Просмотр фото крупно */
+body.no-scroll { overflow: hidden; }
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-7) var(--s-2) var(--s-5);
+  background: rgba(20, 14, 10, 0.92);
+}
+.lightbox[hidden] { display: none; }
+.lightbox__fig {
+  margin: 0;
+  max-width: 100%;
+  max-height: 100%;
+  display: grid;
+  gap: var(--s-2);
+  justify-items: center;
+}
+.lightbox__fig img {
+  max-width: min(100%, 1200px);
+  max-height: calc(100dvh - 140px);
+  object-fit: contain;
+  border-radius: var(--radius);
+}
+.lightbox__cap { color: rgba(255, 255, 255, 0.85); font-size: 14px; text-align: center; }
+.lightbox__close,
+.lightbox__nav {
+  position: absolute;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.lightbox__close:hover,
+.lightbox__nav:hover { background: rgba(255, 255, 255, 0.24); }
+.lightbox__close { top: calc(var(--s-3) + env(safe-area-inset-top)); right: var(--s-3); }
+.lightbox__nav { top: 50%; transform: translateY(-50%); font-size: 30px; }
+.lightbox__nav--prev { left: var(--s-2); }
+.lightbox__nav--next { right: var(--s-2); }
+.lightbox__nav[hidden] { display: none; }

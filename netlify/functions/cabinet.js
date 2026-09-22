@@ -6,6 +6,11 @@
 //    poll    — проверить, подтвердил ли клиент номер в боте; если да, выдать
 //              cookie сессии
 //    me      — вернуть данные кабинета: имя, будущие записи, история
+//    slots   — свободное время для переноса своей записи на выбранную дату
+//    reschedule — перенести свою запись на другую дату/время (тот же мастер
+//              и те же услуги)
+//    cancel  — отменить свою запись (статус «Отменён клиентом»; запись не
+//              стирается — администратор видит отмену, слот освобождается)
 //    logout  — закрыть сессию
 //    setup   — разово подключить вебхук бота (нужен ключ, см. ниже)
 //
@@ -15,11 +20,20 @@
 
 const {
   CONFIG,
+  apptStartMs,
   clean,
+  computeFreeSlots,
   connect,
   corsHeaders,
+  daysBetween,
   fail,
+  isValidDateStr,
+  isValidTimeStr,
   jsonResponse,
+  loadBusyIntervals,
+  loadDaysOff,
+  loadMasters,
+  loadSettings,
   phoneKey,
   salonNow,
   withDb,
@@ -84,7 +98,7 @@ async function loadVisits(client, phone) {
   // возможности, состава нет, и мы берём единственную услугу самой записи:
   // иначе в кабинете у старых визитов пропала бы услуга.
   const res = await client.query(
-    `SELECT a.date, a.time, a.duration, a.status, a.price,
+    `SELECT a.id, a.date, a.time, a.duration, a.status, a.price,
             coalesce(s.name, '')  AS "serviceName",
             coalesce(ps.name, '') AS "parentName",
             coalesce(m.name, '')  AS "masterName",
@@ -112,6 +126,7 @@ async function loadVisits(client, phone) {
 
   res.rows.forEach((r) => {
     const item = {
+      id: r.id,
       date: r.date,
       time: r.time,
       duration: Number(r.duration) || 0,
@@ -120,6 +135,8 @@ async function loadVisits(client, phone) {
       serviceName: r.servicesLabel
         || (r.parentName ? r.parentName + ' — ' + r.serviceName : r.serviceName),
       masterName: r.masterName,
+      // Можно ли отменить или перенести запись прямо из кабинета.
+      canChange: canClientChange(r),
     };
     if (r.date >= today) upcoming.push(item);
     else past.push(item);
@@ -130,6 +147,79 @@ async function loadVisits(client, phone) {
 }
 
 const CANCELLED = ['Отменён клиентом', 'Отменён салоном', 'Не пришёл'];
+
+// Статусы, при которых клиент может сам отменить или перенести запись.
+// «Оказана услуга» и отменённые — уже нельзя.
+const CLIENT_CHANGEABLE = ['Записан', 'Подтверждён', 'Не подтверждён'];
+
+// Отменить или перенести запись онлайн можно не позже чем за столько минут до
+// визита (по умолчанию 2 часа — то же значение, что и минимальный запас при
+// новой записи, BOOKING_LEAD_MINUTES). Позже — только через WhatsApp.
+function canClientChange(appt) {
+  if (CLIENT_CHANGEABLE.indexOf(String(appt.status || '').trim()) === -1) return false;
+  return apptStartMs(appt.date, appt.time) - Date.now() >= CONFIG.leadMinutes * 60 * 1000;
+}
+
+const CHANGE_TOO_LATE =
+  'Отменить или перенести запись онлайн можно не позже чем за 2 часа до визита. ' +
+  'Напишите нам в WhatsApp — поможем.';
+
+// Отметка времени по часам салона для заметки в записи: «2026-09-22 14:05».
+function salonStamp() {
+  const d = new Date(Date.now() + CONFIG.tzOffsetHours * 3600 * 1000);
+  return d.toISOString().slice(0, 16).replace('T', ' ');
+}
+
+function ruDate(dateStr) {
+  const [y, m, d] = String(dateStr).split('-');
+  return `${d}.${m}.${y}`;
+}
+
+// Запись, принадлежащая клиенту из сессии. Принадлежность проверяется по
+// телефону (последние 10 цифр) — ровно так же, как собирается список записей.
+// Чужую запись по id получить нельзя: для неё ответ «не найдена».
+async function loadOwnAppointment(client, phone, id, forUpdate) {
+  const key = phoneKey(phone);
+  if (!id || key.length < 10) fail('Запись не найдена', 404, 'not_found');
+  const res = await client.query(
+    `SELECT id, date, time, duration, master_id AS "masterId", status,
+            coalesce(reminder_sent, 'Нет') AS "reminderSent"
+       FROM appointments
+      WHERE id = $1 AND regexp_replace(phone, '\\D', '', 'g') LIKE $2
+      ${forUpdate ? 'FOR UPDATE' : ''}`,
+    [id, '%' + key]
+  );
+  if (!res.rows.length) fail('Запись не найдена', 404, 'not_found');
+  return res.rows[0];
+}
+
+// Проверка даты, на которую клиент хочет перенести запись.
+function checkNewDate(date) {
+  if (!isValidDateStr(date)) fail('Выберите дату', 400, 'bad_date', 'date');
+  const shift = daysBetween(salonNow().date, date);
+  if (shift < 0) fail('Эта дата уже прошла — выберите другую', 400, 'date_past', 'date');
+  if (shift > CONFIG.horizonDays) fail(`Запись открыта на ${CONFIG.horizonDays} дней вперёд`, 400, 'date_far', 'date');
+}
+
+// Свободное время у мастера этой записи на дату — той же функцией, что и при
+// новой записи с сайта (выходные, часы работы, фиксированное время приёма,
+// занятость). Сама переносимая запись занятостью не считается.
+async function freeSlotsForMove(client, appt, date) {
+  const [settings, masters] = await Promise.all([loadSettings(client), loadMasters(client)]);
+  const master = masters.find((m) => m.id === appt.masterId);
+  if (!master) {
+    fail('Перенести эту запись онлайн нельзя — напишите нам в WhatsApp, подберём время.', 409, 'master_unavailable');
+  }
+  const [busy, daysOff] = await Promise.all([
+    loadBusyIntervals(client, appt.masterId, date, appt.id),
+    loadDaysOff(client, appt.masterId),
+  ]);
+  const durationMin = Math.max(5, parseInt(appt.duration, 10) || 30);
+  return {
+    slots: computeFreeSlots({ settings, master, durationMin, date, busy, daysOff }),
+    dayOff: daysOff.indexOf(date) !== -1,
+  };
+}
 
 // Диагностика и подключение вебхука не трогают базу — это разговор с Telegram.
 // Поэтому они обрабатываются ДО withDb: если база вдруг недоступна,
@@ -271,6 +361,9 @@ const withDbHandler = withDb(
       return {
         authorized: true,
         client: { name: (who.rows[0] && who.rows[0].name) || 'Клиент', phone },
+        // Для выбора даты при переносе: сегодня по часам салона и горизонт записи.
+        today: salonNow().date,
+        horizonDays: CONFIG.horizonDays,
         upcoming: visits.upcoming,
         past: visits.past,
         stats: {
@@ -279,6 +372,94 @@ const withDbHandler = withDb(
           since: done.length ? done[done.length - 1].date : '',
         },
       };
+    }
+
+    // ---- свободное время для переноса ------------------------------------
+    if (action === 'slots') {
+      const phone = await currentPhone(event, client);
+      if (!phone) fail('Войдите в кабинет заново', 401, 'unauthorized');
+      const appt = await loadOwnAppointment(client, phone, clean(body.id, 32), false);
+      if (!canClientChange(appt)) fail(CHANGE_TOO_LATE, 409, 'too_late');
+      const date = clean(body.date, 10);
+      checkNewDate(date);
+      const r = await freeSlotsForMove(client, appt, date);
+      // Текущее время самой записи в этот же день не предлагаем — это не перенос.
+      const slots = date === appt.date ? r.slots.filter((t) => t !== appt.time) : r.slots;
+      return { date, slots, dayOff: r.dayOff };
+    }
+
+    // ---- перенос записи ----------------------------------------------------
+    if (action === 'reschedule') {
+      const phone = await currentPhone(event, client);
+      if (!phone) fail('Войдите в кабинет заново', 401, 'unauthorized');
+      const id = clean(body.id, 32);
+      const date = clean(body.date, 10);
+      const time = clean(body.time, 5);
+      checkNewDate(date);
+      if (!isValidTimeStr(time)) fail('Выберите время', 400, 'bad_time', 'time');
+
+      // Мастер нужен до транзакции — для ключа блокировки.
+      const pre = await loadOwnAppointment(client, phone, id, false);
+
+      await client.query('BEGIN');
+      try {
+        // Та же блокировка (мастер, дата), что и при новой записи с сайта:
+        // перенос и чужая запись на то же время не проскочат одновременно.
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`pilka:${pre.masterId}:${date}`]);
+        const appt = await loadOwnAppointment(client, phone, id, true);
+        if (appt.masterId !== pre.masterId) fail('Запись изменилась — обновите страницу', 409, 'changed');
+        if (!canClientChange(appt)) fail(CHANGE_TOO_LATE, 409, 'too_late');
+        if (appt.date === date && appt.time === time) fail('Это и так время вашей записи', 400, 'same_time', 'time');
+
+        const r = await freeSlotsForMove(client, appt, date);
+        if (r.slots.indexOf(time) === -1) {
+          fail('Это время уже занято или недоступно. Выберите другое — список обновлён.', 409, 'slot_taken', 'time');
+        }
+
+        // Напоминание за 24 часа должно прийти к НОВОМУ времени. «Не требуется»,
+        // выбранное администратором, не трогаем.
+        let reminder = appt.reminderSent;
+        if (reminder !== 'Не требуется') {
+          reminder = apptStartMs(date, time) - Date.now() < 24 * 3600 * 1000 ? 'Да' : 'Нет';
+        }
+        const note = `Перенесено клиентом через личный кабинет ${salonStamp()}: было ${ruDate(appt.date)} ${appt.time}`;
+
+        // Статус — «Не подтверждён»: администратор увидит перенос в сетке (как
+        // заявку с сайта) и подтвердит новое время звонком.
+        await client.query(
+          `UPDATE appointments
+              SET date = $1, time = $2, status = 'Не подтверждён', reminder_sent = $3,
+                  notes = CASE WHEN coalesce(notes, '') = '' THEN $4 ELSE notes || E'\\n' || $4 END,
+                  updated_at = now()
+            WHERE id = $5`,
+          [date, time, reminder, note, appt.id]
+        );
+        await client.query('COMMIT');
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* соединение могло отвалиться */ }
+        throw err;
+      }
+      return { rescheduled: true, date, time };
+    }
+
+    // ---- отмена записи -----------------------------------------------------
+    if (action === 'cancel') {
+      const phone = await currentPhone(event, client);
+      if (!phone) fail('Войдите в кабинет заново', 401, 'unauthorized');
+      const appt = await loadOwnAppointment(client, phone, clean(body.id, 32), false);
+      if (!canClientChange(appt)) fail(CHANGE_TOO_LATE, 409, 'too_late');
+      const note = `Отменено клиентом через личный кабинет ${salonStamp()}`;
+      // Запись не удаляем: статус «Отменён клиентом» освобождает время в сетке
+      // (и на сайте, и в админке), а история и заметка остаются.
+      await client.query(
+        `UPDATE appointments
+            SET status = 'Отменён клиентом',
+                notes = CASE WHEN coalesce(notes, '') = '' THEN $1 ELSE notes || E'\\n' || $1 END,
+                updated_at = now()
+          WHERE id = $2`,
+        [note, appt.id]
+      );
+      return { cancelled: true };
     }
 
     // ---- выход ------------------------------------------------------------

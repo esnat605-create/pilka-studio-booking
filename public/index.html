@@ -45,11 +45,11 @@
     <nav class="site-nav" aria-label="Разделы страницы">
       <a href="#services">Услуги</a>
       <a href="#masters">Мастера</a>
+      <a href="/works">Работы мастеров</a>
       <a href="#contacts">Контакты</a>
-      <a href="/cabinet">Кабинет</a>
     </nav>
 
-    <a class="btn btn--primary btn--sm site-header__cta" href="#booking">Записаться</a>
+    <a class="btn btn--primary btn--sm site-header__cta" href="/cabinet">Кабинет</a>
   </div>
 </header>
 
@@ -83,7 +83,7 @@
       </p>
 
       <div class="hero__actions">
-        <a class="btn btn--primary" href="#booking">Выбрать время</a>
+        <a class="btn btn--primary" href="#masters">Выбрать мастера</a>
         <a class="btn btn--ghost" href="#services">Посмотреть услуги</a>
       </div>
 
@@ -123,6 +123,12 @@
         <div class="skeleton skeleton--row"></div>
         <div class="skeleton skeleton--row"></div>
       </div>
+
+      <!-- Ссылка на отдельную страницу с фото работ. Меню в шапке на телефоне
+           скрыто, поэтому без этой кнопки страница с телефона была бы недоступна. -->
+      <p class="masters__more">
+        <a class="btn btn--ghost" href="/works">Смотреть работы мастеров</a>
+      </p>
     </div>
   </section>
 
@@ -358,6 +364,10 @@
   <div class="wrap site-footer__inner">
     <span class="site-footer__brand">Pilka Studio</span>
     <span class="site-footer__copy">Сухум, ул. Ардзинба 148 · +7 940 775 11 66</span>
+    <nav class="site-footer__nav" aria-label="Страницы сайта">
+      <a href="/works">Работы мастеров</a>
+      <a href="/cabinet">Личный кабинет</a>
+    </nav>
   </div>
 </footer>
 

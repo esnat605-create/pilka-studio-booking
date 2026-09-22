@@ -22,6 +22,7 @@ const ROUTES = {
   '/api/book': './netlify/functions/book.js',
   '/api/cabinet': './netlify/functions/cabinet.js',
   '/api/tg-webhook': './netlify/functions/tg-webhook.js',
+  '/api/works': './netlify/functions/works.js',
 };
 
 const MIME = {
@@ -71,7 +72,9 @@ const server = http.createServer(async (req, res) => {
     try {
       const result = await fn.handler(event);
       res.writeHead(result.statusCode, result.headers || {});
-      res.end(result.body || '');
+      // Картинки (страница «Работы мастеров») функция отдаёт в base64 — как
+      // того требует Netlify. Здесь раскодируем, чтобы браузер получил файл.
+      res.end(result.isBase64Encoded ? Buffer.from(result.body || '', 'base64') : (result.body || ''));
     } catch (err) {
       console.error('Ошибка функции:', err);
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -83,6 +86,7 @@ const server = http.createServer(async (req, res) => {
   // ---- Статика ---------------------------------------------------------------
   let rel = url.pathname === '/' ? '/index.html' : url.pathname;
   if (rel === '/cabinet') rel = '/cabinet.html';
+  if (rel === '/works') rel = '/works.html';
   // Простейшая защита от выхода за пределы public/
   const filePath = path.join(PUBLIC_DIR, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
   if (!filePath.startsWith(PUBLIC_DIR)) {

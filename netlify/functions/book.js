@@ -270,20 +270,41 @@ exports.handler = withDb(
       // -- Карточка клиента ------------------------------------------------
       // Ищем по последним 10 цифрам, чтобы не плодить дубли рядом с номерами,
       // которые администраторы вводили вручную в произвольном формате.
+      //
+      // Клиента опознаём ИМЕННО по телефону: имя на сайте он может написать как
+      // угодно («Аня» вместо «Анна Петровна»). Если карточка с таким номером уже
+      // есть, запись создаётся с именем и номером ИЗ КАРТОЧКИ — ровно в том
+      // виде, в каком их ведёт администратор. Админка связывает записи с
+      // карточкой по номеру, поэтому заявка с сайта сразу попадает в историю
+      // этого клиента, а в сетке стоит привычное администратору имя. То, что
+      // клиент набрал на сайте, не теряется: оно остаётся в заметке и в журнале
+      // заявок web_bookings.
       let clientId = null;
+      let apptClientName = clientName;
+      let apptPhone = phone;
+      let typedNameNote = '';
       if (pKey) {
         const existing = await client.query(
-          `SELECT id, name FROM clients
+          `SELECT id, name, phone FROM clients
             WHERE regexp_replace(phone, '\\D', '', 'g') LIKE $1
             ORDER BY updated_at DESC
             LIMIT 1`,
           ['%' + pKey]
         );
         if (existing.rows.length) {
-          clientId = existing.rows[0].id;
+          const card = existing.rows[0];
+          clientId = card.id;
           // Имя в существующей карточке не перезаписываем: там может быть
           // уточнённое администратором написание, а с сайта приходит то, что
           // клиент набрал на телефоне.
+          const cardName = clean(card.name, 80);
+          if (cardName) {
+            apptClientName = cardName;
+            if (cardName.toLowerCase() !== clientName.toLowerCase()) {
+              typedNameNote = ` (на сайте указано имя: ${clientName})`;
+            }
+          }
+          if (phoneKey(card.phone) === pKey) apptPhone = clean(card.phone, 64);
         } else {
           clientId = uid('c');
           await client.query(
@@ -295,7 +316,7 @@ exports.handler = withDb(
 
       // -- Собственно запись ------------------------------------------------
       const apptId = uid('a');
-      const notes = comment ? `Заявка с сайта: ${comment}` : 'Заявка с сайта';
+      const notes = (comment ? `Заявка с сайта: ${comment}` : 'Заявка с сайта') + typedNameNote;
 
       // Если до визита меньше суток — напоминание за 24 часа всё равно не
       // успеет сработать по расписанию, поэтому сразу считаем его «отправленным»
@@ -315,8 +336,8 @@ exports.handler = withDb(
           time,
           duration,
           masterId,
-          clientName,
-          phone,
+          apptClientName,
+          apptPhone,
           serviceId,
           price,
           0,
@@ -379,7 +400,7 @@ exports.handler = withDb(
         if (normalizedForMsg.ok) {
           const phoneDigits = normalizedForMsg.phone.replace(/\D/g, '');
           const confirmMessage = buildConfirmMessage({
-            clientName,
+            clientName: apptClientName,
             dateStr: date,
             timeStr: time,
             serviceName: serviceLabel,
@@ -399,7 +420,7 @@ exports.handler = withDb(
           masterName: master.name,
           serviceName: serviceLabel,
           price,
-          clientName,
+          clientName: apptClientName,
           phone,
         },
       };

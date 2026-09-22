@@ -377,22 +377,56 @@ function isEarlyEligible(spec) {
   return /стилист|визажист/i.test(String(spec || ''));
 }
 
+// Фиксированное время приёма мастера — строка вида "09:00, 10:30, 12:00",
+// которую администратор заполняет в карточке мастера. Разбираем её в
+// отсортированный список минут от полуночи без повторов; всё, что не похоже
+// на время, молча отбрасываем. Пустой список — обычный режим (сетка с шагом).
+function parseFixedTimes(raw) {
+  const out = [];
+  String(raw || '')
+    .split(/[\s,;]+/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .forEach((x) => {
+      // Допускаем «9:00» и «9.00» — так администратору удобнее набирать.
+      const m = /^(\d{1,2})[:.](\d{2})$/.exec(x);
+      if (!m) return;
+      const t = `${m[1].padStart(2, '0')}:${m[2]}`;
+      if (!isValidTimeStr(t)) return;
+      const min = timeToMin(t);
+      if (out.indexOf(min) === -1) out.push(min);
+    });
+  return out.sort((a, b) => a - b);
+}
+
 // Активные мастера. Телефон и процент мастера наружу не отдаём — на публичной
 // странице этим данным делать нечего.
+//
+// fixed_times читаем через to_jsonb(...)->>'fixed_times', а не прямым именем
+// столбца: если SQL-миграция ещё не выполнена и столбца в базе нет, запрос не
+// падает, а просто возвращает null — сайт продолжает работать по-старому.
 async function loadMasters(client) {
   const res = await client.query(
-    `SELECT id, name, spec, sort_order AS "sortOrder", coalesce(photo_url, '') AS "photoUrl"
-       FROM masters
-      WHERE active IS TRUE
-      ORDER BY sort_order, spec, name`
+    `SELECT m.id, m.name, m.spec, m.sort_order AS "sortOrder",
+            coalesce(m.photo_url, '') AS "photoUrl",
+            coalesce(to_jsonb(m) ->> 'fixed_times', '') AS "fixedTimes"
+       FROM masters m
+      WHERE m.active IS TRUE
+      ORDER BY m.sort_order, m.spec, m.name`
   );
-  return res.rows.map((m) => ({
-    id: m.id,
-    name: m.name || '',
-    spec: m.spec || '',
-    photoUrl: m.photoUrl || '',
-    early: isEarlyEligible(m.spec),
-  }));
+  return res.rows.map((m) => {
+    const fixed = parseFixedTimes(m.fixedTimes);
+    return {
+      id: m.id,
+      name: m.name || '',
+      spec: m.spec || '',
+      photoUrl: m.photoUrl || '',
+      early: isEarlyEligible(m.spec),
+      // Отдаём наружу в виде строк 'HH:MM' — страница может показать их
+      // в карточке мастера. Внутренний расчёт слотов работает с минутами.
+      fixedTimes: fixed.map(minToTime),
+    };
+  });
 }
 
 // Услуги для сайта. Скрытые (hidden) не отдаются вообще: администратор
@@ -544,12 +578,15 @@ function masterDoesService(masterServices, masterId, serviceId) {
 //  верить нельзя, поэтому выбранное им время обязано ещё раз оказаться в этом
 //  списке уже на сервере, внутри транзакции.
 
-async function loadBusyIntervals(client, masterId, date) {
+// excludeId — необязательный id записи, которую НЕ считать занятостью. Нужен
+// при переносе записи из личного кабинета: переносимая запись не должна
+// мешать сама себе (например, сдвинуть визит на полчаса в тот же день).
+async function loadBusyIntervals(client, masterId, date, excludeId) {
   const res = await client.query(
     `SELECT time, duration, status
        FROM appointments
-      WHERE master_id = $1 AND date = $2`,
-    [masterId, date]
+      WHERE master_id = $1 AND date = $2 AND id <> $3`,
+    [masterId, date, excludeId || '']
   );
   return res.rows
     .filter((r) => !NON_CONFLICTING_STATUSES.has(String(r.status || '').trim()))
@@ -587,12 +624,27 @@ function computeFreeSlots(args) {
   // Для сегодняшнего дня отсекаем прошедшее время и ближайшие leadMinutes.
   const earliestToday = dayShift === 0 ? now.minutes + CONFIG.leadMinutes : -Infinity;
 
+  // Кандидаты на начало визита. Обычно — сетка с шагом от открытия до
+  // закрытия. Но если у мастера в карточке задано фиксированное время приёма
+  // (например, 09:00, 10:30, 12:00), клиенту предлагаются ТОЛЬКО эти моменты.
+  // Часы работы салона и занятость проверяются для них точно так же.
+  const fixed = Array.isArray(master.fixedTimes) && master.fixedTimes.length
+    ? master.fixedTimes.map(timeToMin)
+    : null;
+  const candidates = [];
+  if (fixed) {
+    fixed.forEach((t) => { if (t >= openMin) candidates.push(t); });
+  } else {
+    for (let t = openMin; t + durationMin <= closeMin; t += step) candidates.push(t);
+  }
+
   const slots = [];
-  for (let t = openMin; t + durationMin <= closeMin; t += step) {
-    if (t < earliestToday) continue;
+  candidates.forEach((t) => {
+    if (t + durationMin > closeMin) return;
+    if (t < earliestToday) return;
     const overlaps = busy.some((b) => t < b.end && t + durationMin > b.start);
     if (!overlaps) slots.push(minToTime(t));
-  }
+  });
   return slots;
 }
 
@@ -670,6 +722,7 @@ module.exports = {
   masterDoesService,
   minToTime,
   normalizePhone,
+  parseFixedTimes,
   phoneKey,
   salonNow,
   sendWhapiMessage,
