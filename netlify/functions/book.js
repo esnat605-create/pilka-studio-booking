@@ -54,6 +54,7 @@ const {
   uid,
   withDb,
 } = require('./lib/core.js');
+const { assertIpWithinLimit, assertNotBlacklisted } = require('./lib/guard.js');
 
 // Если до начала визита меньше суток, отдельное напоминание «за 24 часа» уже
 // не имеет смысла (а то и физически не успеет) — в этом случае клиенту уходит
@@ -155,6 +156,11 @@ exports.handler = withDb(
     if (!phoneCheck.ok) fail(phoneCheck.reason, 400, 'bad_phone', 'phone');
     const phone = phoneCheck.phone;
 
+    // Чёрный список номеров. Проверяем как можно раньше — до обращений к
+    // справочникам и до транзакции — и независимо от формата записи номера:
+    // сравнение идёт по последним 10 цифрам. Подробности — в lib/guard.js.
+    await assertNotBlacklisted(client, phone);
+
     if (!masterId) fail('Выберите мастера', 400, 'bad_request', 'masterId');
     if (!serviceIds.length) fail('Выберите услугу', 400, 'bad_request', 'serviceId');
     if (!isValidDateStr(date)) fail('Выберите дату записи', 400, 'bad_date', 'date');
@@ -207,6 +213,11 @@ exports.handler = withDb(
       // сериализует одновременные попытки записаться к одному мастеру на один
       // день. Записи к другим мастерам и на другие даты не задерживаются.
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`pilka:${masterId}:${date}`]);
+
+      // -- Антиспам по IP-адресу -----------------------------------------
+      // Не больше MAX_BOOKINGS_PER_IP_PER_HOUR заявок в час с одного адреса
+      // (по умолчанию 5). Адрес хранится только в виде необратимого отпечатка.
+      await assertIpWithinLimit(client, ipHash);
 
       // -- Антиспам по номеру телефона -----------------------------------
       const dayCountRes = await client.query(
