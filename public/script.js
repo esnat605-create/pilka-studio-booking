@@ -647,7 +647,9 @@
         cb.addEventListener('change', function () { toggleService(s.id, cb.checked); });
         boxes.push(cb);
         row.appendChild(cb);
-        row.appendChild(el('span', 'master-svc__name', serviceFullName(s)));
+        // Название без повтора категории — только когда заголовок категории виден.
+        row.appendChild(el('span', 'master-svc__name',
+          groups.length > 1 ? serviceNameInCategory(s, group.title) : serviceFullName(s)));
         var price = priceLabel(s);
         row.appendChild(el('span', 'master-svc__meta', formatDuration(s.duration) + (price ? ' · ' + price : '')));
         // Без остановки всплытия нажатие по строке дошло бы до шапки карточки и
@@ -795,6 +797,40 @@
     return parent ? parent.name + ' — ' + s.name : s.name;
   }
 
+  // Название услуги под заголовком её категории. Если у ВСЕХ услуг категории
+  // один и тот же заголовок-родитель («Макияж — Вечерний», «Макияж — Дневной»…),
+  // приставка ничего не сообщает: категория над списком уже названа. Тогда
+  // показываем только «Вечерний». Если в категории родители разные или есть
+  // услуги без родителя, приставка нужна, чтобы отличить одноимённые варианты,
+  // и название остаётся полным. Там, где заголовка категории рядом нет
+  // (итог выбора, «Выбрано»), по-прежнему выводится serviceFullName.
+  var uniformParentCache = { catalog: null, map: {} };
+
+  function categoryKey(s) { return s.category || 'Другие услуги'; }
+
+  function uniformParentOf(category) {
+    var data = state.catalog;
+    if (!data) return '';
+    if (uniformParentCache.catalog !== data) {
+      var map = {};
+      data.services.forEach(function (s) {
+        if (!isBookable(s, data.services)) return;
+        var key = categoryKey(s);
+        var pid = s.parentId || '';
+        if (!Object.prototype.hasOwnProperty.call(map, key)) map[key] = pid;
+        else if (map[key] !== pid) map[key] = '';
+      });
+      uniformParentCache = { catalog: data, map: map };
+    }
+    return Object.prototype.hasOwnProperty.call(uniformParentCache.map, category)
+      ? uniformParentCache.map[category] : '';
+  }
+
+  function serviceNameInCategory(s, category) {
+    if (s && s.parentId && uniformParentOf(category) === s.parentId) return s.name;
+    return serviceFullName(s);
+  }
+
   function selectedServices() {
     if (!state.catalog) return [];
     return state.serviceIds
@@ -846,7 +882,7 @@
       return chosenIds.indexOf(s.id) === -1 && serviceMatchesQuery(s, q);
     });
 
-    function row(s, checked) {
+    function row(s, checked, groupTitle) {
       var label = el('label', 'svc-pick__row');
       var cb = document.createElement('input');
       cb.type = 'checkbox';
@@ -854,7 +890,8 @@
       cb.checked = checked;
       cb.addEventListener('change', function () { toggleService(s.id, cb.checked); });
       label.appendChild(cb);
-      label.appendChild(el('span', 'svc-pick__name', serviceFullName(s)));
+      label.appendChild(el('span', 'svc-pick__name',
+        groupTitle ? serviceNameInCategory(s, groupTitle) : serviceFullName(s)));
       var meta = el('span', 'svc-pick__meta',
         formatDuration(s.duration) + (formatPrice(s.price) ? ' · ' + formatPrice(s.price) : ''));
       label.appendChild(meta);
@@ -869,7 +906,7 @@
     if (rest.length) {
       groupServices(rest).forEach(function (group) {
         box.appendChild(el('p', 'svc-pick__group', group.title));
-        group.items.forEach(function (s) { box.appendChild(row(s, false)); });
+        group.items.forEach(function (s) { box.appendChild(row(s, false, group.title)); });
       });
     } else if (!chosen.length) {
       box.appendChild(el('p', 'svc-pick__empty',
